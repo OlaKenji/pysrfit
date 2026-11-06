@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mysr"
+version = "0.2.0"
+description = "GUI-first, extensible muon spin spectroscopy fitting workbench"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "mysr contributors"}]
+dependencies = ["numpy>=1.24", "matplotlib>=3.7", "PyQt5>=5.15", "iminuit>=2.20"]
+
+[project.optional-dependencies]
+nexus = ["h5py>=3.8"]
+root = ["uproot>=5"]
+data = ["h5py>=3.8", "uproot>=5"]
+dev = ["pytest>=7", "h5py>=3.8", "uproot>=5"]
+
+[project.gui-scripts]
+mysr = "mysr.app:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mysr*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

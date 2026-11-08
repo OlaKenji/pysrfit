@@ -40,10 +40,10 @@ def test_histogram_asymmetry_and_alignment():
     assert np.allclose(s.asymmetry, (100 - 80)/(100 + 80))
     assert np.all(s.error > 0)
     changed, changed_error = asymmetry_from_components(s, 2.0)
-    assert np.allclose(changed, (100 - 2 * 80) / (100 + 2 * 80))
+    assert np.allclose(changed, (2 * 100 - 80) / (2 * 100 + 80))
     assert np.all(changed_error > 0)
     assert not np.allclose(changed, s.asymmetry)
-    assert np.all(changed < s.asymmetry)
+    assert np.all(changed > s.asymmetry)
 
 
 def test_detector_groups_align_each_histogram_by_its_t0():

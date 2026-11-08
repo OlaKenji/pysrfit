@@ -230,7 +230,7 @@ def test_apply_parameters_refreshes_alpha_spectrum(application):
 
     assert np.allclose(
         analysis.data.values,
-        (100 - 2 * 80) / (100 + 2 * 80),
+        (2 * 100 - 80) / (2 * 100 + 80),
     )
     assert analysis.data.metadata["alpha"] == 2.0
     window.close()

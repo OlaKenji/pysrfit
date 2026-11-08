@@ -162,10 +162,10 @@ def asymmetry_from_components(
     backward = np.asarray(components["backward"], dtype=float)
     forward_variance = np.asarray(components["forward_variance"], dtype=float)
     backward_variance = np.asarray(components["backward_variance"], dtype=float)
-    denominator = forward + alpha * backward
+    denominator = alpha * forward + backward
     if np.any(denominator <= 0):
         raise ValueError("Nonpositive denominator after background subtraction")
-    asymmetry = (forward - alpha * backward) / denominator
+    asymmetry = (alpha * forward - backward) / denominator
     derivative_forward = 2 * alpha * backward / denominator**2
     derivative_backward = -2 * alpha * forward / denominator**2
     variance = (

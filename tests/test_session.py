@@ -235,6 +235,6 @@ def test_changing_alpha_parameter_refreshes_cached_asymmetry():
     assert session.refresh_parameter_dependent_data() == 1
 
     assert np.allclose(original, (100 - 80) / (100 + 80))
-    assert np.allclose(session.data.values, (100 - 2 * 80) / (100 + 2 * 80))
+    assert np.allclose(session.data.values, (2 * 100 - 80) / (2 * 100 + 80))
     assert session.data.metadata["alpha"] == 2.0
 

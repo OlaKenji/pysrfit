@@ -223,7 +223,8 @@ def run_sequential_fit(
             if result.valid:
                 for parameter in project.parameters:
                     parameter.value = result.values[parameter.index]
-                    if not parameter.fixed:
+                    if (not parameter.fixed
+                            and parameter.index not in result.automatically_fixed):
                         parameter.step = result.errors[parameter.index]
                 _format_fitted_parameters(project)
                 if chain_fit:

@@ -67,7 +67,7 @@ To exercise fitting, choose **Open data in new analysis…** and open `examples/
 - MINUIT2 chi-square fitting to fit-ready asymmetry or musrfit type-0 histogram counts. Type 0 uses `N0 * exp(-t/tau_mu) * (1 + A(t)) + background`, automatically creates run-local normalization/background parameters when needed, and accepts an optional lifetime parameter; invalid minima do not replace model parameters.
 - A modular reader registry with independent readers for 3-column ASCII, a strict HDF5 NeXus `NXdata` subset, and PSI MusrRoot. MusrRoot imports `hDecayNNN` counts plus detector names, t0, first-good/last-good bins, and run/sample metadata.
 - musrfit-style detector grouping (`1 2 3` or `1-3`), integer-bin t0 alignment, background correction, packing, Poisson propagation, and both type-2 asymmetry and type-0 raw-count preparation.
-- Per-run floating detector alpha parameters for raw type-2 asymmetry; forward/backward asymmetry and its propagated uncertainty are rebuilt from cached detector components during every fit evaluation.
+- Per-run floating detector alpha parameters for raw type-2 asymmetry, using the musrfit convention `(alpha*F - B) / (alpha*F + B)`. Fits keep alpha=1 data and uncertainties fixed while transforming the model; the displayed spectrum follows the current alpha value.
 - Native `.pysrfit` JSON read/write; data file paths remain external rather than embedding massive raw arrays.
 
 ## Important scientific / compatibility limitations

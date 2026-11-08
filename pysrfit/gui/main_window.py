@@ -527,7 +527,7 @@ class AnalysisWorkspace(QWidget):
         corrections_layout = QVBoxLayout(corrections)
         self.corrections_help = QLabel(
             "Forward/backward asymmetry fits use two detector groups and fit "
-            "(Nᶠ − alpha Nᴮ) / (Nᶠ + alpha Nᴮ). Alpha references a fit-parameter "
+            "(alpha Nᶠ − Nᴮ) / (alpha Nᶠ + Nᴮ). Alpha references a fit-parameter "
             "number. Parameter maps, packing and fit ranges remain per run.")
         self.corrections_help.setWordWrap(True)
         self.corrections_help.setSizePolicy(
@@ -1210,7 +1210,7 @@ class AnalysisWorkspace(QWidget):
         else:
             self.corrections_help.setText(
                 "Forward/backward asymmetry fits use two detector groups and fit "
-                "(Nᶠ − alpha Nᴮ) / (Nᶠ + alpha Nᴮ). Alpha references a "
+                "(alpha Nᶠ − Nᴮ) / (alpha Nᶠ + Nᴮ). Alpha references a "
                 "fit-parameter number. Parameter maps, packing and fit ranges remain "
                 "per run.")
 
@@ -2089,6 +2089,17 @@ class AnalysisWorkspace(QWidget):
                 self.project,
                 [(run, data) for _index, run, data in prepared],
             )
+            if result.automatically_fixed:
+                by_index = {
+                    parameter.index: parameter.name
+                    for parameter in self.project.parameters
+                }
+                descriptions = ", ".join(
+                    f"{index} ({by_index[index]})"
+                    for index in result.automatically_fixed)
+                self._log(
+                    "Automatically fixed unused parameters for this fit: "
+                    f"{descriptions}")
             if not result.valid:
                 self.project.last_fit = FitRecord(
                     valid=False,
@@ -2104,7 +2115,7 @@ class AnalysisWorkspace(QWidget):
                 return
             for p in self.project.parameters:
                 p.value = result.values[p.index]
-                if not p.fixed:
+                if not p.fixed and p.index not in result.automatically_fixed:
                     p.step = result.errors[p.index]
             self._populate_parameters_only()
             self._sync_parameters()

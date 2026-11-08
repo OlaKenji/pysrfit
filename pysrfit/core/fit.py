@@ -1,7 +1,9 @@
 """MINUIT2 single/global least-squares fitting and fit-range selection."""
 from __future__ import annotations
 
+import ast
 from dataclasses import dataclass, field
+import re
 from typing import Sequence, Tuple, Union
 
 import numpy as np
@@ -25,6 +27,92 @@ class FitResult:
     valid: bool
     run_chi2: list[float] = field(default_factory=list)
     run_points: list[int] = field(default_factory=list)
+    automatically_fixed: list[int] = field(default_factory=list)
+
+
+_AUXILIARY_DEFINITION = re.compile(
+    r"(fun\d+)\s*=\s*(.+)", flags=re.IGNORECASE)
+_PARAMETER_NAME = re.compile(r"par(\d+)", flags=re.IGNORECASE)
+_MAP_NAME = re.compile(r"map(\d+)", flags=re.IGNORECASE)
+_FUNCTION_NAME = re.compile(r"fun\d+", flags=re.IGNORECASE)
+
+
+def _theory_parameter_indices(
+    project: Project,
+    mappings: Sequence[Sequence[int]],
+) -> set[int]:
+    """Return parameter numbers reachable from THEORY and FUNCTIONS."""
+    definitions: dict[str, set[str]] = {}
+    for raw in project.functions_text.splitlines():
+        stripped = raw.split("#", 1)[0].strip()
+        if not stripped:
+            continue
+        match = _AUXILIARY_DEFINITION.fullmatch(stripped)
+        if match is None:
+            continue
+        tree = ast.parse(match.group(2), mode="eval")
+        definitions[match.group(1).lower()] = {
+            node.id.lower()
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Name)
+        }
+
+    roots = []
+    for raw in project.theory.splitlines():
+        line = raw.split("#", 1)[0].split("(", 1)[0].strip()
+        if not line or line == "+":
+            continue
+        roots.extend(line.split()[1:])
+
+    used: set[int] = set()
+
+    def resolve(token: str, mapping: Sequence[int], visited: set[str]) -> None:
+        lower = token.lower()
+        try:
+            used.add(int(lower))
+            return
+        except ValueError:
+            pass
+        parameter_match = _PARAMETER_NAME.fullmatch(lower)
+        if parameter_match is not None:
+            used.add(int(parameter_match.group(1)))
+            return
+        map_match = _MAP_NAME.fullmatch(lower)
+        if map_match is not None:
+            position = int(map_match.group(1)) - 1
+            if 0 <= position < len(mapping) and mapping[position]:
+                used.add(int(mapping[position]))
+            return
+        if _FUNCTION_NAME.fullmatch(lower) is None or lower in visited:
+            return
+        visited.add(lower)
+        for dependency in definitions.get(lower, ()):
+            resolve(dependency, mapping, visited)
+
+    effective_mappings = mappings or [()]
+    for mapping in effective_mappings:
+        for root in roots:
+            resolve(root, mapping, set())
+    return used
+
+
+def used_parameter_indices(
+    project: Project,
+    datasets: Sequence[FitDataset],
+) -> set[int]:
+    """Return parameters which affect at least one fitted dataset."""
+    used = _theory_parameter_indices(
+        project, [_mapping(run) for run, _data in datasets])
+    for run, data in datasets:
+        if isinstance(data, Spectrum) and "asymmetry_components" in data.metadata:
+            alpha_index = _alpha_reference(run)
+            if alpha_index is not None:
+                used.add(alpha_index)
+        if isinstance(data, CountSpectrum):
+            for key in ("norm", "backgr.fit", "lifetime"):
+                if run.tokens(key):
+                    used.add(_parameter_reference(run, key))
+    return used
 
 
 def _parameter_reference(run: RunConfig, key: str) -> int:
@@ -130,6 +218,28 @@ def _alpha_reference(run: RunConfig) -> int | None:
         raise ValueError("RUN alpha must reference a parameter number") from exc
 
 
+def transform_asymmetry_model_for_alpha(model, alpha: float) -> np.ndarray:
+    """Express an alpha-corrected model in the fixed alpha=1 data convention.
+
+    PySRFit follows the musrfit convention for corrected asymmetry,
+    ``(alpha*F - B) / (alpha*F + B)``.  The fit data and uncertainties are
+    formed once with alpha=1; this transformation lets alpha vary through the
+    model without changing either the measured values or their weights.
+    """
+    corrected = np.asarray(model, dtype=float)
+    value = float(alpha)
+    if not np.isfinite(value) or value <= 0:
+        raise ValueError("Alpha must be positive")
+    numerator = (value + 1.0) * corrected - (value - 1.0)
+    denominator = (value + 1.0) - (value - 1.0) * corrected
+    if np.any(~np.isfinite(denominator)) or np.any(np.abs(denominator) < 1e-15):
+        raise ValueError("Alpha transformation has a zero denominator")
+    transformed = numerator / denominator
+    if np.any(~np.isfinite(transformed)):
+        raise ValueError("Alpha transformation produced nonfinite values")
+    return transformed
+
+
 def fit_global(project: Project, datasets: Sequence[FitDataset]) -> FitResult:
     """Fit all datasets with one unique project parameter vector."""
     try:
@@ -145,7 +255,16 @@ def fit_global(project: Project, datasets: Sequence[FitDataset]) -> FitResult:
     names = [f"p{parameter.index}" for parameter in pars]
     if len(set(names)) != len(names):
         raise ValueError("Duplicate parameter indices")
-    free_n = sum(not parameter.fixed for parameter in pars)
+    used_indices = used_parameter_indices(project, datasets)
+    automatically_fixed = [
+        parameter.index
+        for parameter in pars
+        if not parameter.fixed and parameter.index not in used_indices
+    ]
+    automatically_fixed_set = set(automatically_fixed)
+    free_n = sum(
+        not parameter.fixed and parameter.index not in automatically_fixed_set
+        for parameter in pars)
     prepared = []
     total_points = 0
     parameter_by_index = {parameter.index: parameter for parameter in pars}
@@ -164,6 +283,13 @@ def fit_global(project: Project, datasets: Sequence[FitDataset]) -> FitResult:
                     and not parameter_by_index[alpha_index].fixed):
                 raise ValueError(
                     "Floating alpha needs raw detector components; reload the raw run")
+            if "asymmetry_components" in data.metadata:
+                # Keep the experimental values and statistical weights fixed
+                # throughout minimization. Alpha acts on the model below.
+                reference_y, reference_error = asymmetry_from_components(
+                    data, 1.0)
+                y = reference_y[indices]
+                error = reference_error[indices]
         prepared.append((run, data, indices, t, y, error, alpha_index))
         total_points += len(t)
     if total_points <= free_n:
@@ -176,17 +302,15 @@ def fit_global(project: Project, datasets: Sequence[FitDataset]) -> FitResult:
         }
         result = []
         for run, data, indices, time, observed, error, alpha_index in prepared:
+            model = evaluate_data_model(
+                project, data, time, parameter_values, run=run)
             if alpha_index is not None and "asymmetry_components" in data.metadata:
                 try:
-                    all_observed, all_error = asymmetry_from_components(
-                        data, parameter_values[alpha_index])
+                    model = transform_asymmetry_model_for_alpha(
+                        model, parameter_values[alpha_index])
                 except ValueError:
                     result.append(1e100)
                     continue
-                observed = all_observed[indices]
-                error = all_error[indices]
-            model = evaluate_data_model(
-                project, data, time, parameter_values, run=run)
             residual = (observed - model) / error
             result.append(float(np.dot(residual, residual)))
         return result
@@ -197,7 +321,8 @@ def fit_global(project: Project, datasets: Sequence[FitDataset]) -> FitResult:
     minimizer = Minuit(chi2, *[parameter.value for parameter in pars], name=names)
     minimizer.errordef = Minuit.LEAST_SQUARES
     for parameter, name in zip(pars, names):
-        minimizer.fixed[name] = parameter.fixed
+        minimizer.fixed[name] = (
+            parameter.fixed or parameter.index in automatically_fixed_set)
         if parameter.lower is not None or parameter.upper is not None:
             minimizer.limits[name] = (parameter.lower, parameter.upper)
         if parameter.step > 0:
@@ -211,7 +336,8 @@ def fit_global(project: Project, datasets: Sequence[FitDataset]) -> FitResult:
         values={parameter.index: value for parameter, value in zip(pars, fitted_values)},
         errors={
             parameter.index: (
-                0.0 if parameter.fixed else float(minimizer.errors[name]))
+                0.0 if parameter.fixed or parameter.index in automatically_fixed_set
+                else float(minimizer.errors[name]))
             for parameter, name in zip(pars, names)
         },
         chi2=float(sum(run_chi2)),
@@ -219,4 +345,5 @@ def fit_global(project: Project, datasets: Sequence[FitDataset]) -> FitResult:
         valid=bool(minimizer.valid),
         run_chi2=run_chi2,
         run_points=[len(item[3]) for item in prepared],
+        automatically_fixed=automatically_fixed,
     )

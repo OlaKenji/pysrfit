@@ -1,6 +1,6 @@
-"""Launch the mysr GUI from a source checkout."""
+"""Launch the pysrfit GUI from a source checkout."""
 
-from mysr.app import main
+from pysrfit.app import main
 
 
 if __name__ == "__main__":

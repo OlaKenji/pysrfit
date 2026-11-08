@@ -1,7 +1,7 @@
 import pytest
 
-from mysr.models import Parameter
-from mysr.parameters import (
+from pysrfit.models import Parameter
+from pysrfit.parameters import (
     DEFAULT_SIGNIFICANT_DIGITS,
     ParameterTextError,
     format_parameter_text,

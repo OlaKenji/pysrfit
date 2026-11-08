@@ -3,13 +3,13 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mysr"
+name = "pysrfit"
 version = "0.2.0"
 description = "GUI-first, extensible muon spin spectroscopy fitting workbench"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
-authors = [{name = "mysr contributors"}]
+authors = [{name = "PySRFit contributors"}]
 dependencies = ["numpy>=1.24", "matplotlib>=3.7", "PyQt5>=5.15", "iminuit>=2.20"]
 
 [project.optional-dependencies]
@@ -19,11 +19,11 @@ data = ["h5py>=3.8", "uproot>=5"]
 dev = ["pytest>=7", "h5py>=3.8", "uproot>=5"]
 
 [project.gui-scripts]
-mysr = "mysr.app:main"
+pysrfit = "pysrfit.app:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["mysr*"]
+include = ["pysrfit*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

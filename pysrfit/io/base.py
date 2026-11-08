@@ -1,4 +1,4 @@
-"""Stable normalized data objects and pluggable raw-data reader interface for mysr."""
+"""Stable normalized data objects and pluggable raw-data reader interface for pysrfit."""
 from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path

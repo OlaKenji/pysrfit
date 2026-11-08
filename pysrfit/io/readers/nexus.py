@@ -32,7 +32,7 @@ class NexusLoader:
             import h5py
         except (ImportError, ValueError) as exc:
             raise UnsupportedFormatError(
-                "NeXus support requires a working 'pip install mysr[nexus]' installation") from exc
+                "NeXus support requires a working 'pip install pysrfit[nexus]' installation") from exc
 
         with h5py.File(path, "r") as root:
             groups: list[str] = []

@@ -1,9 +1,9 @@
 import numpy as np
 import pytest
 
-from mysr.corrections import RunCorrectionState
-from mysr.io.base import DetectorInfo, HistogramRun
-from mysr.models import RunConfig
+from pysrfit.corrections import RunCorrectionState
+from pysrfit.io.base import DetectorInfo, HistogramRun
+from pysrfit.models import RunConfig
 
 
 def example_histograms():
@@ -73,3 +73,16 @@ def test_single_histogram_visual_markers():
     state.apply_to(run)
     assert run.tokens("t0") == ["8"]
     assert run.tokens("data") == ["6", "25"]
+
+
+def test_single_histogram_fitted_background_disables_background_markers():
+    run = RunConfig(fittype=0, options={
+        "forward": ["3"], "t0": ["5"], "data": ["6", "25"],
+        "background": ["0", "3"], "backgr.fit": ["2"],
+    })
+    state = RunCorrectionState(example_histograms(), run)
+    assert not state.background_editable
+    with pytest.raises(ValueError, match="ignored"):
+        state.set_marker(0, "b", 1)
+    state.apply_to(run)
+    assert not run.tokens("background")

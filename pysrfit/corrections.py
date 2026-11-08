@@ -38,6 +38,7 @@ class RunCorrectionState:
         self.data = data
         self.fittype = run.fittype
         self._has_fixed_background = bool(run.tokens("backgr.fix"))
+        self._has_fitted_background = bool(run.tokens("backgr.fit"))
         self._indices = {"forward": detector_group(data, run.tokens("forward"))}
         if run.fittype == 2:
             self._indices["backward"] = detector_group(data, run.tokens("backward"))
@@ -54,6 +55,10 @@ class RunCorrectionState:
     @property
     def roles(self) -> tuple[str, ...]:
         return ("forward", "backward") if self.fittype == 2 else ("forward",)
+
+    @property
+    def background_editable(self) -> bool:
+        return not (self.fittype == 0 and self._has_fitted_background)
 
     def _make_targets(self) -> list[HistogramTarget]:
         targets = []
@@ -122,6 +127,8 @@ class RunCorrectionState:
             raise ValueError(f"Channel must be between 0 and {self.data.counts.shape[1] - 1}")
         target = self.targets[target_index]
         name, endpoint = self.MARKERS[key]
+        if name == "background" and not self.background_editable:
+            raise ValueError("Background limits are ignored when backgr.fit is used")
         if name == "t0":
             self.t0[(target.role, target.position)] = channel
         else:
@@ -139,7 +146,8 @@ class RunCorrectionState:
     def validate(self) -> None:
         if any(value is None for value in self.t0.values()):
             raise ValueError("Set t0 for every selected detector")
-        for name in ("data", "background"):
+        range_names = ("data", "background") if self.background_editable else ("data",)
+        for name in range_names:
             for role in self.roles:
                 self._validate_pair(name, role, self.ranges[name][role])
             present = [self.ranges[name][role] != [None, None] for role in self.roles]
@@ -156,7 +164,8 @@ class RunCorrectionState:
             for role in self.roles:
                 t0_values.append(str(self.t0[(role, position)]))
         run.options["t0"] = t0_values
-        for name in ("data", "background"):
+        range_names = ("data", "background") if self.background_editable else ("data",)
+        for name in range_names:
             values = [
                 value
                 for role in self.roles
@@ -166,3 +175,5 @@ class RunCorrectionState:
                 run.options.pop(name, None)
             else:
                 run.options[name] = [str(value) for value in values]
+        if not self.background_editable:
+            run.options.pop("background", None)

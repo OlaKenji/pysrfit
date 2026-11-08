@@ -1,10 +1,15 @@
 from pathlib import Path
 import numpy as np
 import pytest
-from mysr.io.base import DetectorInfo, UnsupportedFormatError, HistogramRun
-from mysr.io.loaders import LOADERS, load_data
-from mysr.io.asymmetry import detector_group, make_asymmetry, make_histogram
-from mysr.models import RunConfig
+from pysrfit.io.base import DetectorInfo, UnsupportedFormatError, HistogramRun
+from pysrfit.io.loaders import LOADERS, load_data
+from pysrfit.io.asymmetry import (
+    asymmetry_from_components,
+    detector_group,
+    make_asymmetry,
+    make_histogram,
+)
+from pysrfit.models import RunConfig
 
 
 def test_csv_3col_and_uncertainty_guard(tmp_path):
@@ -34,6 +39,11 @@ def test_histogram_asymmetry_and_alignment():
     assert len(s.time_us) == 8
     assert np.allclose(s.asymmetry, (100 - 80)/(100 + 80))
     assert np.all(s.error > 0)
+    changed, changed_error = asymmetry_from_components(s, 2.0)
+    assert np.allclose(changed, (100 - 2 * 80) / (100 + 2 * 80))
+    assert np.all(changed_error > 0)
+    assert not np.allclose(changed, s.asymmetry)
+    assert np.all(changed < s.asymmetry)
 
 
 def test_detector_groups_align_each_histogram_by_its_t0():

@@ -1,10 +1,10 @@
-"""GUI application lifecycle for mysr."""
+"""GUI application lifecycle for PySRFit."""
 from __future__ import annotations
 
 import sys
 
 
-class MysrApplication:
+class PySRFitApplication:
     """Own the Qt application and its main window."""
 
     def __init__(self, argv=None):
@@ -27,11 +27,14 @@ class MysrApplication:
     def run(self) -> int:
         application = self.create_qt_application()
         window = self.create_main_window()
-        window.show()
+        # Let the window manager size the GUI to the usable desktop area.  A
+        # fixed initial size can extend below smaller screens once the title
+        # bar, menu bar, and dock/taskbar are taken into account.
+        window.showMaximized()
         return int(application.exec_())
 
 
 def main() -> int:
     """GUI entry point used by the installed application launcher."""
-    return MysrApplication().run()
+    return PySRFitApplication().run()
 

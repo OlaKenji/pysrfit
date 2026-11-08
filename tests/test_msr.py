@@ -1,10 +1,10 @@
 from pathlib import Path
 import numpy as np
 import pytest
-from mysr.msr import read_msr
-from mysr.models import Project
-from mysr.parameters import parse_parameter_text
-from mysr.core.theory import evaluate_theory
+from pysrfit.msr import read_msr
+from pysrfit.models import Project
+from pysrfit.parameters import parse_parameter_text
+from pysrfit.core.theory import evaluate_theory
 
 MSR = Path(__file__).resolve().parents[1] / "examples" / "ZF44K.msr"
 
@@ -34,7 +34,9 @@ def test_msr_import_and_preview():
 def test_native_roundtrip_preserves_source(tmp_path):
     p = read_msr(MSR)
     p.custom_python = "# example code"
-    dest = tmp_path / "experiment.mysr"
+    p.runs[0].file_metadata = {"temperature": "5 K", "run_number": 2651}
+    p.runs[0].user_metadata = {"comment": "field cooled"}
+    dest = tmp_path / "experiment.pysrfit"
     p.save(dest)
     loaded = Project.load(dest)
     assert loaded.parameters == p.parameters
@@ -43,9 +45,13 @@ def test_native_roundtrip_preserves_source(tmp_path):
     assert loaded.source_msr == MSR.read_text()
     assert loaded.msr_sections == p.msr_sections
     assert loaded.custom_python == "# example code"
+    assert loaded.fourier == p.fourier
+    assert loaded.runs[0].file_metadata == p.runs[0].file_metadata
+    assert loaded.runs[0].user_metadata == p.runs[0].user_metadata
 
 
-def test_legacy_project_extension_is_rejected(tmp_path):
+@pytest.mark.parametrize("suffix", [".mysr", ".pymusr"])
+def test_non_pysrfit_project_extensions_are_rejected(tmp_path, suffix):
     project = read_msr(MSR)
-    with pytest.raises(ValueError, match=r"\.mysr extension"):
-        project.save(tmp_path / "experiment.pymusr")
+    with pytest.raises(ValueError, match=r"\.pysrfit extension"):
+        project.save(tmp_path / f"experiment{suffix}")

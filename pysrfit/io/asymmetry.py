@@ -148,6 +148,35 @@ def _background(
     return mean, variance_of_mean
 
 
+def asymmetry_from_components(
+    spectrum: Spectrum,
+    alpha: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Recalculate asymmetry and uncertainty from cached detector components."""
+    components = spectrum.metadata.get("asymmetry_components")
+    if not isinstance(components, dict):
+        raise ValueError("Asymmetry spectrum has no detector components for floating alpha")
+    if not np.isfinite(alpha) or alpha <= 0:
+        raise ValueError("Alpha must be positive")
+    forward = np.asarray(components["forward"], dtype=float)
+    backward = np.asarray(components["backward"], dtype=float)
+    forward_variance = np.asarray(components["forward_variance"], dtype=float)
+    backward_variance = np.asarray(components["backward_variance"], dtype=float)
+    denominator = forward + alpha * backward
+    if np.any(denominator <= 0):
+        raise ValueError("Nonpositive denominator after background subtraction")
+    asymmetry = (forward - alpha * backward) / denominator
+    derivative_forward = 2 * alpha * backward / denominator**2
+    derivative_backward = -2 * alpha * forward / denominator**2
+    variance = (
+        derivative_forward**2 * forward_variance
+        + derivative_backward**2 * backward_variance
+    )
+    if np.any(~np.isfinite(variance)) or np.any(variance <= 0):
+        raise ValueError("Nonpositive asymmetry variance")
+    return asymmetry, np.sqrt(variance)
+
+
 def make_asymmetry(data: HistogramRun, run: RunConfig, alpha: float = 1.0) -> Spectrum:
     """Build a musrfit type-2 forward/backward asymmetry spectrum."""
     if run.fittype != 2:
@@ -198,18 +227,8 @@ def make_asymmetry(data: HistogramRun, run: RunConfig, alpha: float = 1.0) -> Sp
     packed_backward, _ = _pack(raw_backward, packing)
     corrected_forward = packed_forward - packing * background_forward
     corrected_backward = packed_backward - packing * background_backward
-    denominator = alpha * corrected_forward + corrected_backward
-    if np.any(denominator <= 0):
-        raise ValueError("Nonpositive denominator after background subtraction")
-    asymmetry = (alpha * corrected_forward - corrected_backward) / denominator
-    derivative_forward = 2 * alpha * corrected_backward / denominator**2
-    derivative_backward = -2 * alpha * corrected_forward / denominator**2
-    variance = (
-        derivative_forward**2 * (packed_forward + packing**2 * variance_forward)
-        + derivative_backward**2 * (packed_backward + packing**2 * variance_backward)
-    )
-    if np.any(variance <= 0):
-        raise ValueError("Nonpositive asymmetry variance")
+    forward_variance = packed_forward + packing**2 * variance_forward
+    backward_variance = packed_backward + packing**2 * variance_backward
     time = offsets[:count].reshape(-1, packing).mean(axis=1) * data.channel_width_us
     metadata = {
         **data.metadata,
@@ -218,8 +237,23 @@ def make_asymmetry(data: HistogramRun, run: RunConfig, alpha: float = 1.0) -> Sp
         "backward": [data.detectors[index].number for index in backward],
         "t0": [value for pair in zip(forward_t0, backward_t0) for value in pair],
         "background": [background_forward, background_backward],
+        "asymmetry_components": {
+            "forward": corrected_forward,
+            "backward": corrected_backward,
+            "forward_variance": forward_variance,
+            "backward_variance": backward_variance,
+        },
     }
-    return Spectrum(time, asymmetry, np.sqrt(variance), metadata)
+    placeholder = Spectrum(
+        time,
+        np.zeros_like(time, dtype=float),
+        np.ones_like(time, dtype=float),
+        metadata,
+    )
+    asymmetry, error = asymmetry_from_components(placeholder, alpha)
+    placeholder.asymmetry = asymmetry
+    placeholder.error = error
+    return placeholder
 
 
 def make_histogram(data: HistogramRun, run: RunConfig) -> CountSpectrum:

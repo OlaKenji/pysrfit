@@ -1,4 +1,4 @@
-"""Facility-neutral data loading and histogram preparation for mysr."""
+"""Facility-neutral data loading and histogram preparation for pysrfit."""
 
 from .base import CountSpectrum, DetectorInfo, HistogramRun, Spectrum, UnsupportedFormatError
 from .loaders import load_data, register_loader

@@ -63,7 +63,7 @@ class MusrRootLoader:
             import uproot
         except ImportError as exc:
             raise UnsupportedFormatError(
-                "MusrRoot support requires uproot; install with 'pip install mysr[root]'") from exc
+                "MusrRoot support requires uproot; install with 'pip install pysrfit[root]'") from exc
 
         try:
             with uproot.open(path) as root:
@@ -136,6 +136,14 @@ class MusrRootLoader:
             "field": run_info.get("Sample Magnetic Field", ""),
             "time_resolution_us": channel_width_us,
             "format": "MUSR-ROOT",
+            "file_header": {
+                key: value for key, value in run_info.items()
+                if key not in {
+                    "Laboratory", "Instrument", "Run Title", "Run Number",
+                    "Sample Name", "Sample Temperature", "Sample Magnetic Field",
+                    "Time Resolution",
+                }
+            },
         }
         return HistogramRun(time, np.vstack(counts), metadata, detectors)
 

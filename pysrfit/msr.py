@@ -1,4 +1,4 @@
-"""Conservative musrfit .msr importer for mysr; unsupported sections are retained."""
+"""Conservative musrfit .msr importer for pysrfit; unsupported sections are retained."""
 from __future__ import annotations
 from pathlib import Path
 import re

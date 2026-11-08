@@ -1,4 +1,4 @@
-"""Evaluate a supported subset of musrfit THEORY + FUNCTIONS syntax in mysr."""
+"""Evaluate a supported subset of musrfit THEORY + FUNCTIONS syntax in pysrfit."""
 from __future__ import annotations
 import ast
 import operator

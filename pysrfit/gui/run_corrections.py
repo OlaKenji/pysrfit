@@ -45,10 +45,17 @@ class RunCorrectionsDialog(QDialog):
         self.resize(1050, 700)
 
         layout = QVBoxLayout(self)
-        help_label = QLabel(
-            "Move the pointer over the raw histogram and press: "
-            "t = t0, d/D = data start/end, b/B = background start/end. "
-            "Uppercase D and B mean Shift+D and Shift+B.")
+        if self.state.background_editable:
+            help_text = (
+                "Move the pointer over the raw histogram and press: "
+                "t = t0, d/D = data start/end, b/B = background start/end. "
+                "Uppercase D and B mean Shift+D and Shift+B.")
+        else:
+            help_text = (
+                "Move the pointer over the raw histogram and press: "
+                "t = t0, d/D = data start/end. The constant background is fitted, "
+                "so background-range markers are not used.")
+        help_label = QLabel(help_text)
         help_label.setWordWrap(True)
         layout.addWidget(help_label)
 
@@ -102,7 +109,7 @@ class RunCorrectionsDialog(QDialog):
         if None not in data_range:
             self._axes.axvspan(data_range[0], data_range[1], color="tab:green", alpha=0.18, label="Data range")
         background = markers["background"]
-        if None not in background:
+        if self.state.background_editable and None not in background:
             self._axes.axvspan(background[0], background[1], color="tab:blue", alpha=0.18, label="Background")
         if markers["t0"] is not None:
             self._axes.axvline(markers["t0"], color="tab:red", linewidth=1.5, label="t0")
@@ -145,9 +152,9 @@ class RunCorrectionsDialog(QDialog):
     def _update_status(self, message=None):
         markers = self.state.marker_values(self.target_index)
         cursor = "—" if self._cursor_channel is None else str(self._cursor_channel)
-        summary = (
-            f"Pointer: {cursor} | t0: {markers['t0']} | "
-            f"data: {markers['data']} | background: {markers['background']}")
+        summary = f"Pointer: {cursor} | t0: {markers['t0']} | data: {markers['data']}"
+        if self.state.background_editable:
+            summary += f" | background: {markers['background']}"
         self.status_label.setText(f"{message}   {summary}" if message else summary)
 
     def _pointer_moved(self, event):

@@ -1,7 +1,5 @@
 # pySRFit
 
-**S**pin **R**esolved **F**Fit
-
 A modern, interactive GUI application for analysing muon spin rotation, relaxation and resonance (μSR) data. PySRFit is inspired by musrfit and uses a similar parameter and THEORY style.
 
 ![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
@@ -14,7 +12,6 @@ A modern, interactive GUI application for analysing muon spin rotation, relaxati
 - **Multi-beamline support**: Load raw μSR data from PSI, ISIS, J-PARC and TRIUMF.
 - **Fitting**: Perform single-run, global and sequential fits using MINUIT.
 - **Fourier transform**: Display data and fits in the time domain or as Fourier transforms.
-- **Analyse the data**: Fit the processed data
 - **Save dataset**: Save complete analyses as `.pysrfit` projects.
 - **Generate a tabulated result table**: Collect fitted projects into CSV result tables.
 - **Custom relaxation functions**: Add custom Python relaxation functions.
@@ -54,57 +51,6 @@ pysrfit
 - **ISIS:** NeXus `.nxs` files.
 - **J-PARC:** NeXus `.nxs` files, tested with MS1 and MD1 data.
 - **TRIUMF:** binary MUD `.msr` and `.mud` files.
-
-# PySRFit
-
-A modern, interactive GUI application for analysing muon spin rotation,
-relaxation and resonance (μSR) data. PySRFit is inspired by musrfit and uses a
-similar parameter and THEORY style.
-
-![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)
-![PyQt5](https://img.shields.io/badge/PyQt5-5.15%2B-green.svg)
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-
-## Features
-
-- Load raw μSR data from PSI, ISIS, J-PARC and TRIUMF.
-- Configure detector groups, time zero, background and data ranges visually.
-- Fit forward/backward asymmetry or single-histogram counts.
-- Perform single-run, global and sequential fits using MINUIT.
-- Use shared or run-specific parameters in global fits.
-- Display data and fits in the time domain or as Fourier transforms.
-- Save complete analyses as `.pysrfit` projects.
-- Collect fitted projects into CSV result tables.
-- Add custom Python relaxation functions.
-
-## Installation
-
-pysrfit
-```
-
-## Basic workflow
-
-1. Launch PySRFit and add one or more data files.
-2. Configure the selected run in **Runs / Data**.
-3. Define the parameters and THEORY model.
-4. Apply the parameters, fit the data, and save the `.pysrfit` project.
-
-Adding several data files creates a global fit. All configured runs are fitted;
-**Show in plot** only controls which runs are displayed.
-
-## Supported data
-
-- **PSI:** MusrRoot `.root` files, tested with GPS, GPD, FLAME, HAL and LEM.
-- **ISIS:** NeXus `.nxs` files.
-- **J-PARC:** NeXus `.nxs` files, tested with MS1 and MD1 data.
-- **TRIUMF:** binary MUD `.msr` and `.mud` files.
-- **Reduced spectra:** three-column `.txt`, `.csv`, `.dat`, `.xy` or `.tsv`
-  files containing time, asymmetry and uncertainty.
-- **Analysis files:** native `.pysrfit` projects and musrfit `.msr` files.
-
-Automatic detector configuration is conservative. If the detector layout is
-not recognized, the data are loaded but the run is left for manual
-configuration.
 
 ## Theory
 

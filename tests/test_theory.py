@@ -192,3 +192,69 @@ def test_dynamic_lorentzian_lf_kt_limits_and_theory_names():
         evaluate_theory("dynExpKTLF 1 2 3", time, values),
         dynamic,
     )
+
+
+def test_two_state_zero_rate_is_weighted_static_mixture():
+    time = np.linspace(0.0, 4.0, 81)
+    values = {
+        1: 0.0,
+        2: 0.0,
+        3: 0.3,
+        4: 0.0,
+        5: 0.7,
+        6: 0.25,
+        7: 0.12,
+    }
+    theory = (
+        "twoState 1 2 3 | TFieldCos 4 5 * simplExpo 7 | statGssKt 6"
+    )
+    expected_first = np.cos(2.0 * np.pi * values[5] * time) * np.exp(
+        -values[7] * time)
+    expected_second = gaussian_kt(time, values[6])
+    expected = values[3] * expected_first + (1.0 - values[3]) * expected_second
+    assert np.allclose(evaluate_theory(theory, time, values), expected)
+
+
+def test_two_state_conserves_polarization_for_constant_static_states():
+    time = np.linspace(0.0, 5.0, 101)
+    values = {1: 0.7, 2: 1.3, 3: 0.37, 4: 0.0}
+    result = evaluate_theory(
+        "twoState 1 2 3 | simplExpo 4 | simplExpo 4", time, values)
+    assert np.allclose(result, 1.0, atol=2e-5)
+
+
+def test_two_state_identical_static_functions_reduce_to_static_function():
+    time = np.linspace(0.0, 4.0, 81)
+    values = {1: 2.0, 2: 0.4, 3: 0.65, 4: 0.23}
+    result = evaluate_theory(
+        "twoState 1 2 3 | simplExpo 4 | simplExpo 4", time, values)
+    assert np.allclose(result, np.exp(-values[4] * time), atol=2e-5)
+
+
+def test_two_state_accepts_custom_static_functions():
+    source = '''\nfrom pysrfit.core.functions import register_function\nimport numpy as np\n@register_function("sampleStatic", 1, custom=True)\ndef fn(t, frequency):\n    return np.cos(2 * np.pi * frequency * np.asarray(t))\n'''
+    activate_user_code(source)
+    try:
+        time = np.linspace(0.0, 2.0, 41)
+        values = {1: 0.0, 2: 0.0, 3: 0.4, 4: 0.7, 5: 0.2}
+        result = evaluate_theory(
+            "twoState 1 2 3 | sampleStatic 4 | sampleStatic 5",
+            time,
+            values,
+        )
+        expected = (
+            values[3] * np.cos(2.0 * np.pi * values[4] * time)
+            + (1.0 - values[3]) * np.cos(2.0 * np.pi * values[5] * time)
+        )
+        assert np.allclose(result, expected)
+    finally:
+        REGISTRY.pop("samplestatic", None)
+
+
+def test_two_state_reports_incomplete_composite_syntax():
+    with pytest.raises(ValueError, match="twoState syntax"):
+        evaluate_theory(
+            "twoState 1 2 3 | statGssKt 4",
+            [0.0, 1.0],
+            {1: 0.1, 2: 0.1, 3: 0.5, 4: 0.2},
+        )

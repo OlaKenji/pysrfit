@@ -62,7 +62,10 @@ def _theory_parameter_indices(
         line = raw.split("#", 1)[0].split("(", 1)[0].strip()
         if not line or line == "+":
             continue
-        roots.extend(line.split()[1:])
+        # Composite two-state lines use | between states and may use * to
+        # multiply static functions.  Treat both as separators so every
+        # referenced parameter remains reachable by the fitter.
+        roots.extend(line.replace("|", " ").replace("*", " ").split()[1:])
 
     used: set[int] = set()
 

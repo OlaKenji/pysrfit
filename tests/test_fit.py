@@ -55,6 +55,20 @@ def test_parameter_usage_includes_single_histogram_references():
     assert used_parameter_indices(project, [(run, data)]) == {1, 2, 3, 4}
 
 
+def test_parameter_usage_includes_two_state_static_functions():
+    project = Project(
+        parameters=[Parameter(index, f"p{index}", 1.0) for index in range(1, 7)],
+        theory=(
+            "twoState 1 2 3 | simplExpo fun1 | statGssKt map1"
+        ),
+        functions_text="fun1 = par4",
+    )
+    run = RunConfig(options={"map": ["5"]})
+    data = Spectrum([0.0, 1.0], [0.0, 0.0], [1.0, 1.0])
+
+    assert used_parameter_indices(project, [(run, data)]) == {1, 2, 3, 4, 5}
+
+
 def test_alpha_transforms_theory_to_fixed_reference_asymmetry():
     forward = np.array([100.0, 120.0])
     backward = np.array([80.0, 70.0])

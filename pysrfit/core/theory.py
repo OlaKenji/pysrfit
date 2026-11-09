@@ -66,7 +66,29 @@ def evaluate_theory(theory: str, t_us, parameters: dict[int, float],
                     functions_text: str = "", mapping: list[int] | None = None) -> np.ndarray:
     t = np.asarray(t_us, dtype=float)
     names = auxiliary_values(functions_text, parameters, mapping)
-    terms: list[list[tuple[str, list[str]]]] = [[]]
+    terms: list[list[tuple]] = [[]]
+
+    def parse_static_product(text: str, state_number: int):
+        product = []
+        for expression in text.split("*"):
+            parts = expression.strip().split()
+            if not parts:
+                raise ValueError(
+                    f"twoState state {state_number} contains an empty function")
+            key = parts[0].lower()
+            if key not in REGISTRY:
+                raise ValueError(
+                    f"Unknown twoState static function '{parts[0]}'")
+            spec = REGISTRY[key]
+            if spec.composite:
+                raise ValueError("Nested composite THEORY functions are not supported")
+            if len(parts) - 1 != spec.arity:
+                raise ValueError(
+                    f"{parts[0]} expects {spec.arity} parameter references, "
+                    f"got {len(parts) - 1}")
+            product.append((key, parts[1:]))
+        return product
+
     for raw in theory.splitlines():
         line = raw.split("#", 1)[0].split("(", 1)[0].strip()
         if not line:
@@ -76,14 +98,31 @@ def evaluate_theory(theory: str, t_us, parameters: dict[int, float],
                 raise ValueError("Empty THEORY component before '+'")
             terms.append([])
             continue
-        parts = line.split()
+        segments = [segment.strip() for segment in line.split("|")]
+        parts = segments[0].split()
         key = parts[0].lower()
         if key not in REGISTRY:
             raise ValueError(f"Unknown THEORY function '{parts[0]}'; load custom code if needed")
-        expected = REGISTRY[key].arity
+        spec = REGISTRY[key]
+        expected = spec.arity
         if len(parts) - 1 != expected:
             raise ValueError(f"{parts[0]} expects {expected} parameter references, got {len(parts)-1}")
-        terms[-1].append((key, parts[1:]))
+        if spec.composite:
+            if key != "twostate":
+                raise ValueError(f"Unsupported composite THEORY function '{parts[0]}'")
+            if len(segments) != 3:
+                raise ValueError(
+                    "twoState syntax is: twoState nu1 nu2 g | "
+                    "staticFunction1 ... | staticFunction2 ...")
+            states = (
+                parse_static_product(segments[1], 1),
+                parse_static_product(segments[2], 2),
+            )
+            terms[-1].append((key, parts[1:], states))
+        else:
+            if len(segments) != 1:
+                raise ValueError("'|' is only valid in a twoState THEORY line")
+            terms[-1].append((key, parts[1:]))
     if not terms[-1]:
         raise ValueError("THEORY is empty or ends with '+'")
 
@@ -102,8 +141,40 @@ def evaluate_theory(theory: str, t_us, parameters: dict[int, float],
     total = np.zeros_like(t, dtype=float)
     for component in terms:
         subtotal = np.ones_like(t)
-        for funcname, args in component:
-            result = np.asarray(REGISTRY[funcname].function(t, *(value(x) for x in args)), dtype=float)
+        for entry in component:
+            funcname, args = entry[:2]
+            spec = REGISTRY[funcname]
+            if spec.composite:
+                state_products = entry[2]
+
+                def static_product(times, product):
+                    times = np.asarray(times, dtype=float)
+                    product_value = np.ones_like(times)
+                    for static_name, static_args in product:
+                        static_result = np.asarray(
+                            REGISTRY[static_name].function(
+                                times, *(value(x) for x in static_args)),
+                            dtype=float,
+                        )
+                        if static_result.shape != times.shape:
+                            raise ValueError(
+                                f"Function {static_name} returned shape "
+                                f"{static_result.shape}, expected {times.shape}")
+                        product_value *= static_result
+                    return product_value
+
+                result = np.asarray(
+                    spec.function(
+                        t,
+                        *(value(x) for x in args),
+                        lambda times, product=state_products[0]: static_product(times, product),
+                        lambda times, product=state_products[1]: static_product(times, product),
+                    ),
+                    dtype=float,
+                )
+            else:
+                result = np.asarray(
+                    spec.function(t, *(value(x) for x in args)), dtype=float)
             if result.shape != t.shape:
                 raise ValueError(f"Function {funcname} returned shape {result.shape}, expected {t.shape}")
             subtotal *= result

@@ -820,6 +820,13 @@ class AnalysisWorkspace(QWidget):
         if spec is None:
             self.theory_function_description.clear()
             return
+        if spec.composite and key == "twostate":
+            self.theory_function_description.setText(
+                f"{spec.description}. Syntax: twoState nu1 nu2 g | "
+                "static1 parameters | static2 parameters. Static functions "
+                "may be multiplied with '*'."
+            )
+            return
         arguments = " ".join(f"par {n + 1}" for n in range(spec.arity)) or "no parameters"
         description = spec.description or "No description available"
         self.theory_function_description.setText(
@@ -831,8 +838,16 @@ class AnalysisWorkspace(QWidget):
         if spec is None:
             return
         available = [parameter.index for parameter in self.project.parameters] or [1]
-        arguments = [str(available[min(n, len(available) - 1)]) for n in range(spec.arity)]
-        line = " ".join([spec.name, *arguments])
+        if spec.composite and key == "twostate":
+            reference = lambda position: str(
+                available[min(position, len(available) - 1)])
+            line = (
+                f"twoState {reference(0)} {reference(0)} {reference(1)} | "
+                f"statGssKt {reference(2)} | statGssKt {reference(3)}"
+            )
+        else:
+            arguments = [str(available[min(n, len(available) - 1)]) for n in range(spec.arity)]
+            line = " ".join([spec.name, *arguments])
         cursor = self.theory_edit.textCursor()
         if not cursor.atBlockStart():
             cursor.insertText("\n")

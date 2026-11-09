@@ -11,6 +11,7 @@ class FunctionSpec:
     function: Callable
     description: str = ""
     custom: bool = False
+    composite: bool = False
 
 REGISTRY: dict[str, FunctionSpec] = {}
 
@@ -447,6 +448,119 @@ def dynamic_lorentzian_kt_lf(t, frequency_mhz, damping, hopping_rate):
     return result.reshape(shape)
 
 
+def two_state_collision(t, rate1, rate2, weight, static1, static2):
+    """Generalized two-state strong-collision polarization.
+
+    ``static1`` and ``static2`` are callables which evaluate the two static
+    polarization functions.  The model solves the coupled renewal equations
+    directly, including asymmetric state-1 -> state-2 and state-2 -> state-1
+    rates.  This is Eq. (10) of Phys. Rev. B 112, 024309 (2025), evaluated in
+    the time domain without explicitly summing individual collision orders.
+    """
+    times = np.asarray(t, dtype=float)
+    shape = times.shape
+    flat = times.reshape(-1)
+    first_rate = abs(float(rate1))
+    second_rate = abs(float(rate2))
+    first_weight = float(weight)
+
+    # The dynamic construction is causal and is only needed at t >= 0.  For
+    # negative display times retain the weighted static polarization.
+    first_at_times = np.asarray(static1(flat), dtype=float)
+    second_at_times = np.asarray(static2(flat), dtype=float)
+    if first_at_times.shape != flat.shape or second_at_times.shape != flat.shape:
+        raise ValueError("Two-state static functions must preserve the time shape")
+    result = first_weight * first_at_times + (1.0 - first_weight) * second_at_times
+    positive = flat >= 0.0
+    selected = flat[positive]
+    if not len(selected):
+        return result.reshape(shape)
+
+    maximum = float(np.max(selected))
+    if maximum <= 0.0 or max(first_rate, second_rate) < 1e-15:
+        return result.reshape(shape)
+
+    # Resolve the measured sampling at least twice, and use a finer default
+    # grid for packed data.  The rate-dependent limit also keeps the renewal
+    # integration accurate when collisions are fast.
+    unique_times = np.unique(selected)
+    spacings = np.diff(unique_times)
+    spacings = spacings[spacings > 1e-12]
+    measured_step = float(np.median(spacings)) if len(spacings) else maximum
+    target_step = min(0.005, 0.5 * measured_step)
+    fastest_rate = max(first_rate, second_rate)
+    if fastest_rate > 0.0:
+        target_step = min(target_step, 0.25 / fastest_rate)
+    target_step = max(target_step, np.finfo(float).eps * max(1.0, maximum))
+    count = int(np.ceil(maximum / target_step)) + 1
+    if count > 8_000:
+        raise ValueError(
+            "Two-state collision model requires more than 8000 integration "
+            "points; shorten the time range or reduce the switching rate"
+        )
+    grid = np.linspace(0.0, maximum, max(count, 2))
+    step = float(grid[1] - grid[0])
+
+    static_first = np.asarray(static1(grid), dtype=float)
+    static_second = np.asarray(static2(grid), dtype=float)
+    if static_first.shape != grid.shape or static_second.shape != grid.shape:
+        raise ValueError("Two-state static functions must preserve the time shape")
+    if not np.all(np.isfinite(static_first)) or not np.all(np.isfinite(static_second)):
+        raise ValueError("Two-state static function produced nonfinite values")
+
+    free_first = static_first * np.exp(-first_rate * grid)
+    free_second = static_second * np.exp(-second_rate * grid)
+    kernel_first = first_rate * free_first
+    kernel_second = second_rate * free_second
+    dynamic_first = np.empty_like(grid)
+    dynamic_second = np.empty_like(grid)
+    dynamic_first[0] = free_first[0]
+    dynamic_second[0] = free_second[0]
+
+    endpoint_first = 0.5 * step * kernel_first[0]
+    endpoint_second = 0.5 * step * kernel_second[0]
+    denominator = 1.0 - endpoint_first * endpoint_second
+    if abs(denominator) < 1e-12:
+        raise ValueError("Two-state collision integration became unstable")
+
+    for index in range(1, len(grid)):
+        first_rhs = free_first[index]
+        second_rhs = free_second[index]
+        first_rhs += 0.5 * step * kernel_first[index] * dynamic_second[0]
+        second_rhs += 0.5 * step * kernel_second[index] * dynamic_first[0]
+        if index > 1:
+            first_rhs += step * np.dot(
+                kernel_first[1:index], dynamic_second[index - 1:0:-1]
+            )
+            second_rhs += step * np.dot(
+                kernel_second[1:index], dynamic_first[index - 1:0:-1]
+            )
+        dynamic_first[index] = (
+            first_rhs + endpoint_first * second_rhs
+        ) / denominator
+        dynamic_second[index] = (
+            second_rhs + endpoint_second * first_rhs
+        ) / denominator
+
+    dynamic = first_weight * dynamic_first + (1.0 - first_weight) * dynamic_second
+    result[positive] = np.interp(selected, grid, dynamic)
+    if not np.all(np.isfinite(result)):
+        raise ValueError("Two-state collision model produced nonfinite values")
+    return result.reshape(shape)
+
+
+# This entry is parsed specially by theory.evaluate_theory because its two
+# static functions are themselves registered THEORY expressions.
+REGISTRY["twostate"] = FunctionSpec(
+    "twoState",
+    3,
+    two_state_collision,
+    "Generalized two-state collision model: nu1, nu2, starting weight g, "
+    "followed by two static functions separated by '|'; constrain 0 <= g <= 1",
+    composite=True,
+)
+
+
 CUSTOM_EXAMPLE = '''# This code runs only when you click "Activate code".
 # You can write your own Python relaxation functions without compilation.
 import numpy as np
@@ -459,8 +573,6 @@ def stretched_expo(t, lam, beta):
 # Then use in THEORY, e.g.:
 #   asymmetry 1
 #   stretchedExpo 2 3
-# A custom numerical two-state strong-collision model can use the
-# same interface once verified against Phys. Rev. B 112, 024309.
 '''
 
 

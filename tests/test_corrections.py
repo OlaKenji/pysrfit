@@ -35,9 +35,27 @@ def test_visual_markers_apply_in_musrfit_order():
     state.set_marker(1, "B", 6)
     state.apply_to(run)
 
-    assert run.tokens("t0") == ["9", "7"]
-    assert run.tokens("data") == ["10", "24", "8", "27"]
-    assert run.tokens("background") == ["0", "3", "2", "6"]
+    assert state.marker_values(1)["t0"] == 9
+    assert state.marker_values(1)["data"] == [10, 24]
+    assert state.marker_values(0)["background"] == [2, 6]
+    assert run.tokens("t0") == ["9"]
+    assert run.tokens("data") == ["10", "24", "10", "24"]
+    assert run.tokens("background") == ["2", "6", "2", "6"]
+
+
+def test_one_t0_value_populates_and_stays_compact():
+    run = RunConfig(fittype=2, options={
+        "forward": ["3"], "backward": ["4"], "t0": ["6"],
+        "data": ["6", "25", "8", "27"],
+        "background": ["0", "3", "1", "4"],
+    })
+    state = RunCorrectionState(example_histograms(), run)
+
+    assert state.marker_values(0)["t0"] == 6
+    assert state.marker_values(1)["t0"] == 6
+
+    state.apply_to(run)
+    assert run.tokens("t0") == ["6"]
 
 
 def test_visual_marker_range_validation():

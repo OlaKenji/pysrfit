@@ -4,7 +4,7 @@ import ast
 import operator
 import re
 import numpy as np
-from .functions import REGISTRY, ALIASES
+from .functions import REGISTRY
 
 # Numerical muon gyromagnetic ratio in MHz/G, as used in standard muSR models.
 CONSTANTS = {"gamma_mu": 0.0135538817, "pi": np.pi}
@@ -77,7 +77,7 @@ def evaluate_theory(theory: str, t_us, parameters: dict[int, float],
             terms.append([])
             continue
         parts = line.split()
-        key = ALIASES.get(parts[0].lower(), parts[0]).lower()
+        key = parts[0].lower()
         if key not in REGISTRY:
             raise ValueError(f"Unknown THEORY function '{parts[0]}'; load custom code if needed")
         expected = REGISTRY[key].arity

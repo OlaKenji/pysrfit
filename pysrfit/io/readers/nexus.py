@@ -235,6 +235,28 @@ def _configuration_has_usable_start(
     return True
 
 
+def _discard_unusable_timing(
+    detectors: list[DetectorInfo],
+) -> list[DetectorInfo]:
+    """Keep a trusted layout while preventing fallback to bad timing metadata."""
+    result = []
+    for detector in detectors:
+        metadata = dict(detector.metadata)
+        if detector.t0_bin is not None:
+            metadata["reported_t0_bin"] = detector.t0_bin
+        if detector.first_good_bin is not None:
+            metadata["reported_first_good_bin"] = detector.first_good_bin
+        result.append(DetectorInfo(
+            number=detector.number,
+            name=detector.name,
+            t0_bin=None,
+            first_good_bin=None,
+            last_good_bin=detector.last_good_bin,
+            metadata=metadata,
+        ))
+    return result
+
+
 def _detector_metadata(group, signal, count: int):
     entry = _entry_for(group)
     detector_group = _child(entry, "instrument/detector_1")
@@ -343,7 +365,13 @@ def _load_nxdata(group, path: Path) -> Spectrum | HistogramRun | None:
         facility, instrument, numbers)
     if grouping_suggestion and not _configuration_has_usable_start(
             signal, detectors, grouping_suggestion):
-        suggestion = {}
+        # The grouping itself is still useful. Keep it, but do not let the
+        # session silently fall back to t0/first-good metadata whose proposed
+        # data region contains no counts.
+        suggestion = dict(grouping_suggestion)
+        suggestion.pop("data_stop_us", None)
+        suggestion["manual_timing_required"] = True
+        detectors = _discard_unusable_timing(detectors)
     default_temperature_unit = "K" if facility.casefold() == "j-parc" else ""
     default_field_unit = "G" if facility.casefold() == "j-parc" else ""
     temperature_path = (

@@ -470,8 +470,34 @@ class AnalysisSession:
     def ensure_alpha_parameter(self, index: int) -> int | None:
         """Ensure a type-2 run references a positive, floating alpha parameter."""
         run = self.project.runs[index]
-        if run.fittype != 2 or run.tokens("alpha"):
+        if run.fittype != 2:
             return None
+        tokens = run.tokens("alpha")
+        if tokens:
+            try:
+                numeric_index = float(tokens[0])
+            except ValueError as exc:
+                raise ValueError(
+                    "alpha must reference an existing fit parameter") from exc
+            if (not np.isfinite(numeric_index) or not numeric_index.is_integer()
+                    or numeric_index < 1):
+                raise ValueError(
+                    "alpha must reference a positive integer fit parameter number")
+            parameter_index = int(numeric_index)
+            if any(parameter.index == parameter_index
+                   for parameter in self.project.parameters):
+                return None
+            # Repair a valid numeric reference left dangling by an interrupted
+            # or older detector-processing attempt.
+            base_name = f"alpha_run{index + 1}"
+            existing_names = {parameter.name for parameter in self.project.parameters}
+            name = (
+                base_name if base_name not in existing_names
+                else f"{base_name}_parameter{parameter_index}"
+            )
+            self.project.parameters.append(Parameter(
+                parameter_index, name, 1.0, 0.01, 0.01, 10.0))
+            return parameter_index
         name = f"alpha_run{index + 1}"
         existing = next(
             (parameter for parameter in self.project.parameters if parameter.name == name),
@@ -595,17 +621,29 @@ class AnalysisSession:
         if run.fittype == 2 and not run.tokens("backward"):
             raise ValueError(
                 "Forward/backward asymmetry requires a backward detector group")
-        added_parameters = []
-        added_alpha = self.ensure_alpha_parameter(selected)
-        if added_alpha is not None:
-            added_parameters.append(added_alpha)
-        alpha = 1.0
-        parameter = self.alpha_parameter(selected)
-        if parameter is not None:
-            alpha = parameter.value
-        state.data = prepare_run_data(state.raw_data, run, alpha=alpha)
-        added_parameters.extend(self.ensure_histogram_parameters(selected))
-        return tuple(added_parameters)
+        parameters_before = list(self.project.parameters)
+        options_before = copy.deepcopy(run.options)
+        data_before = state.data
+        try:
+            added_parameters = []
+            added_alpha = self.ensure_alpha_parameter(selected)
+            if added_alpha is not None:
+                added_parameters.append(added_alpha)
+            alpha = 1.0
+            parameter = self.alpha_parameter(selected)
+            if parameter is not None:
+                alpha = parameter.value
+            state.data = prepare_run_data(state.raw_data, run, alpha=alpha)
+            added_parameters.extend(self.ensure_histogram_parameters(selected))
+            return tuple(added_parameters)
+        except Exception:
+            # Parameter creation is part of successful detector preparation.
+            # Do not leave invisible parameters or dangling RUN references
+            # behind when t0/range validation fails.
+            self.project.parameters[:] = parameters_before
+            run.options = options_before
+            state.data = data_before
+            raise
 
     def prepare_view_data(
         self,

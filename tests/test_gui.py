@@ -10,7 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PyQt5")
 pytest.importorskip("matplotlib")
 
-from PyQt5.QtGui import QTextCursor
+from PyQt5.QtGui import QKeySequence, QTextCursor
 from PyQt5.QtWidgets import QApplication
 
 from pysrfit.gui.main_window import MainWindow
@@ -36,6 +36,21 @@ def test_analyses_have_independent_projects_and_data(application):
     assert first.data is None
     assert second.data is not None
     assert window.analysis_tabs.tabText(window.analysis_tabs.currentIndex()) == "demo_spectrum"
+    window.close()
+
+
+def test_data_source_shortcuts(application):
+    window = MainWindow()
+    actions = {
+        action.text(): action
+        for menu_action in window.menuBar().actions()
+        for action in menu_action.menu().actions()
+    }
+
+    assert actions["Add data files…"].shortcut().toString(
+        QKeySequence.PortableText) == "Ctrl+D"
+    assert actions["Change data source..."].shortcut().toString(
+        QKeySequence.PortableText) == "Ctrl+Shift+O"
     window.close()
 
 

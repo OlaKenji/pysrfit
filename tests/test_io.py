@@ -74,6 +74,28 @@ def test_detector_groups_align_each_histogram_by_its_t0():
     assert np.all(np.isfinite(spectrum.asymmetry))
 
 
+def test_one_t0_value_applies_to_every_detector():
+    time = np.arange(30) * 0.01
+    counts = np.full((4, 30), 2.0)
+    counts[:, 5:20] = np.asarray([[12], [14], [10], [11]])
+    raw = HistogramRun(
+        time,
+        counts,
+        detectors=[DetectorInfo(i + 1, name) for i, name in enumerate(
+            ("F1", "F2", "B1", "B2"))],
+    )
+    run = RunConfig(fittype=2, options={
+        "forward": ["1-2"], "backward": ["3-4"], "t0": ["5"],
+        "background": ["0", "3", "0", "3"],
+        "data": ["5", "19", "5", "19"], "packing": ["1"],
+    })
+
+    spectrum = make_asymmetry(raw, run)
+
+    assert spectrum.metadata["t0"] == [5.0, 5.0, 5.0, 5.0]
+    assert np.all(np.isfinite(spectrum.asymmetry))
+
+
 def test_single_histogram_preparation_keeps_raw_counts():
     time = np.arange(20) * 0.1
     counts = np.full((1, 20), 4.0)
@@ -213,7 +235,7 @@ def test_psi_musrroot_default_configuration_is_fit_ready(
 
 @pytest.mark.parametrize(("relative", "shape", "instrument", "run_number"), [
     ("isis/emu/EMU00005989_v2.nxs", (64, 2000), "EMU", 5989),
-    ("jparc/md1/016615.nxs", (640, 8000), "MD1", 16615),
+    ("jparc/md1/016752.nxs", (640, 8000), "MD1", 16752),
     ("jparc/ms1/154519.nxs", (640, 8000), "MS1", 154519),
 ])
 def test_modern_hdf5_nexus_facility_fixtures(
@@ -226,7 +248,10 @@ def test_modern_hdf5_nexus_facility_fixtures(
     assert run.metadata["run_number"] == run_number
     assert run.metadata["format"] == "NEXUS"
     assert run.channel_width_us > 0
-    assert all(detector.t0_bin is not None for detector in run.detectors)
+    if instrument == "MD1":
+        assert all(detector.t0_bin is None for detector in run.detectors)
+    else:
+        assert all(detector.t0_bin is not None for detector in run.detectors)
 
 
 def test_isis_emu_and_jparc_ms1_default_configurations_are_fit_ready():
@@ -250,14 +275,44 @@ def test_isis_emu_and_jparc_ms1_default_configurations_are_fit_ready():
         assert session.data.kind == "asymmetry"
 
 
-def test_jparc_bad_good_bin_metadata_is_left_unconfigured():
+def test_jparc_bad_timing_keeps_groups_but_requires_manual_timing():
     pytest.importorskip("h5py")
-    path = Path(__file__).parent / "data/jparc/md1/016615.nxs"
-    run = load_data(path)
+    path = Path(__file__).parent / "data/jparc/md1/016752.nxs"
+    raw = load_data(path)
 
-    assert not run.metadata["suggested_run_configuration"]
-    assert run.detectors[0].name == "fwd 1"
-    assert run.detectors[-1].name == "bwd 320"
+    suggestion = raw.metadata["suggested_run_configuration"]
+    assert suggestion["manual_timing_required"]
+    assert suggestion["forward"] == list(range(1, 321))
+    assert suggestion["backward"] == list(range(321, 641))
+    assert raw.detectors[0].name == "fwd 1"
+    assert raw.detectors[-1].name == "bwd 320"
+    assert raw.detectors[0].t0_bin is None
+    assert raw.detectors[0].first_good_bin is None
+    assert raw.detectors[0].metadata["reported_t0_bin"] == 935
+    assert raw.detectors[0].metadata["reported_first_good_bin"] == 945
+
+    session = AnalysisSession(
+        Project(runs=[RunConfig(source=str(path))]), loader=load_data)
+    session.attach_data_source(path)
+    outcome = session.ensure_data_loaded()
+    run = session.current_run
+
+    assert "No t0 supplied" in outcome.processing_error
+    assert run.tokens("forward") == ["1-320"]
+    assert run.tokens("backward") == ["321-640"]
+    assert not run.tokens("t0")
+    assert not run.tokens("background")
+    assert not run.tokens("data")
+
+    run.options.update({
+        "t0": ["1452"],
+        "background": ["1000", "1200", "1000", "1200"],
+        "data": ["1462", "2450", "1462", "2450"],
+        "packing": ["20"],
+    })
+    session.process_raw_data()
+    assert session.data is not None
+    assert session.data.kind == "asymmetry"
 
 
 def test_legacy_hdf4_nexus_has_an_explicit_error():

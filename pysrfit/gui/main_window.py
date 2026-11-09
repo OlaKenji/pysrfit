@@ -77,7 +77,7 @@ class MainWindow(QMainWindow):
         self._action(file_menu, "Open project / .msr in new tab...", self.open_dialog, "Ctrl+O")
         self._action(
             file_menu, "Add data files…",
-            lambda: self._call("add_run_files_dialog"), "Ctrl+Shift+O")
+            lambda: self._call("add_run_files_dialog"), "Ctrl+D")
         self._action(file_menu, "Collect fit results...", self.collect_results_dialog)
         file_menu.addSeparator()
         self._action(file_menu, "Save", lambda: self._call("save_project"), "Ctrl+S")
@@ -90,7 +90,9 @@ class MainWindow(QMainWindow):
         self._action(file_menu, "Quit", self.close, "Ctrl+Q")
 
         analysis_menu = self.menuBar().addMenu("&Analysis")
-        self._action(analysis_menu, "Change data source...", lambda: self._call("change_data_source_dialog"), "Ctrl+D")
+        self._action(
+            analysis_menu, "Change data source...",
+            lambda: self._call("change_data_source_dialog"), "Ctrl+Shift+O")
         self._action(
             analysis_menu, "Apply parameters",
             lambda: self._call("apply_parameters"), "Ctrl+R")
@@ -545,6 +547,8 @@ class AnalysisWorkspace(QWidget):
         self.forward_edit = QLineEdit()
         self.backward_edit = QLineEdit()
         self.t0_edit = QLineEdit()
+        self.t0_edit.setPlaceholderText(
+            "one bin applies to every selected detector")
         self.background_edit = QLineEdit()
         self.data_range_edit = QLineEdit()
         self.mapping_edit = QLineEdit()
@@ -569,7 +573,7 @@ class AnalysisWorkspace(QWidget):
             ("norm", "Normalization parameter #", self.norm_edit),
             ("backgr.fit", "Background parameter #", self.background_fit_edit),
             ("lifetime", "Muon lifetime parameter #", self.lifetime_edit),
-            ("t0", "t0 bin(s)", self.t0_edit),
+            ("t0", "t0 bin", self.t0_edit),
             ("data", "Data bins", self.data_range_edit),
             ("map", "Parameter map", self.mapping_edit),
             ("fit", "Fit range (μs)", self.fit_range_edit),

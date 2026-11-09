@@ -3,17 +3,22 @@ import pytest
 from pysrfit.core.functions import (
     REGISTRY,
     activate_user_code,
+    bessel,
     dynamic_gaussian_kt_lf,
+    dynamic_lorentzian_kt_lf,
     gaussian_kt,
     gaussian_kt_lf,
+    lorentzian_kt,
+    lorentzian_kt_lf,
+    stretched_expo,
 )
 from pysrfit.core.theory import evaluate_theory
 
 
-def test_theory_additive_multiplicative_units_and_aliases():
+def test_theory_additive_and_multiplicative_components():
     t = np.array([0., 1.])
     vals = {1: 0.2, 2: 0.1, 3: 0., 4: 0.5, 5: 0.05}
-    theory = "a 1\nse 2\ntf 3 4\n+\nasymmetry 5"
+    theory = "asymmetry 1\nsimplExpo 2\nTFieldCos 3 4\n+\nasymmetry 5"
     out = evaluate_theory(theory, t, vals)
     assert np.allclose(out, 0.2 * np.exp(-0.1 * t) * np.cos(np.pi * t) + 0.05)
 
@@ -47,6 +52,26 @@ def test_unknown_theory_is_rejected():
         evaluate_theory("fictitiousRelax 1 2", [0, 1], {1: 1., 2: 2.})
 
 
+def test_theory_abbreviations_are_not_supported():
+    with pytest.raises(ValueError, match="Unknown THEORY"):
+        evaluate_theory("a 1", [0, 1], {1: 0.2})
+
+
+def test_simple_gaussian_and_bessel():
+    time = np.array([0.0, 1.0])
+    sigma = 0.3
+    assert np.allclose(
+        evaluate_theory("simpleGss 1", time, {1: sigma}),
+        np.exp(-0.5 * (sigma * time) ** 2),
+    )
+    frequency_at_first_zero = 2.404825557695773 / (2.0 * np.pi)
+    values = bessel(time, 0.0, frequency_at_first_zero)
+    assert values[0] == pytest.approx(1.0)
+    assert values[1] == pytest.approx(0.0, abs=1e-8)
+    assert bessel([1.0], 0.0, 1.0 / (2.0 * np.pi))[0] == pytest.approx(
+        0.7651976865579666, abs=1e-8)
+
+
 def test_static_gaussian_lf_kt_has_correct_limits_and_integral():
     time = np.linspace(0.0, 4.0, 81)
     delta = 0.3
@@ -75,7 +100,7 @@ def test_static_gaussian_lf_kt_has_correct_limits_and_integral():
         expected, abs=2e-7)
 
 
-def test_dynamic_gaussian_lf_kt_limits_and_theory_aliases():
+def test_dynamic_gaussian_lf_kt_limits_and_theory_names():
     time = np.linspace(0.0, 5.0, 101)
     static = gaussian_kt_lf(time, 0.2, 0.3)
     assert np.allclose(dynamic_gaussian_kt_lf(time, 0.2, 0.3, 0.0), static)
@@ -86,12 +111,84 @@ def test_dynamic_gaussian_lf_kt_limits_and_theory_aliases():
     assert np.all(np.isfinite(dynamic))
     assert np.all(np.isfinite(fast))
 
+    assert np.allclose(
+        evaluate_theory(
+            "dynGssKTLF 1 2 3", time, {1: 0.2, 2: 0.3, 3: 0.1}),
+        dynamic,
+    )
+
+
+def test_stretched_exponential():
+    time = np.linspace(0.0, 5.0, 51)
+    rate = 0.3
+
+    assert np.allclose(stretched_expo(time, rate, 1.0), np.exp(-rate * time))
+    assert np.allclose(
+        stretched_expo(time, rate, 2.0), np.exp(-(rate * time) ** 2))
+    assert np.allclose(
+        evaluate_theory("generExpo 1 2", time, {1: rate, 2: 0.7}),
+        stretched_expo(time, rate, 0.7),
+    )
+
+
+def test_static_lorentzian_kt_lf_limits_and_integral():
+    time = np.linspace(0.0, 5.0, 101)
+    damping = 0.3
+    assert np.allclose(
+        lorentzian_kt_lf(time, 0.0, damping),
+        lorentzian_kt(time, damping),
+    )
+    assert np.allclose(lorentzian_kt_lf(time, 0.5, 0.0), 1.0)
+    assert np.min(lorentzian_kt_lf(time, 5.0, damping)) > 0.97
+
+    frequency = 0.5
+    selected_time = 1.25
+    integration_time = np.linspace(0.0, selected_time, 200_001)
+    omega = 2.0 * np.pi * frequency
+    argument = omega * integration_time
+    j0 = np.ones_like(argument)
+    j0[1:] = np.sin(argument[1:]) / argument[1:]
+    integrand = np.exp(-damping * integration_time) * j0
+    integral = np.sum(
+        0.5 * np.diff(integration_time)
+        * (integrand[:-1] + integrand[1:]))
+    x = omega * selected_time
+    j0_value = np.sin(x) / x
+    j1_value = (np.sin(x) - x * np.cos(x)) / x**2
+    ratio = damping / omega
+    expected = (
+        1.0
+        - ratio * j1_value * np.exp(-damping * selected_time)
+        - ratio**2 * (j0_value * np.exp(-damping * selected_time) - 1.0)
+        - damping * (1.0 + ratio**2) * integral
+    )
+    assert lorentzian_kt_lf(
+        [selected_time], frequency, damping)[0] == pytest.approx(
+            expected, abs=2e-7)
+
+
+def test_dynamic_lorentzian_lf_kt_limits_and_theory_names():
+    time = np.linspace(0.0, 5.0, 101)
+    static = lorentzian_kt_lf(time, 0.2, 0.3)
+    assert np.allclose(
+        dynamic_lorentzian_kt_lf(time, 0.2, 0.3, 0.0), static)
+    dynamic = dynamic_lorentzian_kt_lf(time, 0.2, 0.3, 0.1)
+    fast = dynamic_lorentzian_kt_lf(time, 0.2, 0.3, 2.0)
+    assert dynamic[0] == pytest.approx(1.0)
+    assert fast[0] == pytest.approx(1.0)
+    assert np.all(np.isfinite(dynamic))
+    assert np.all(np.isfinite(fast))
+
     values = {1: 0.2, 2: 0.3, 3: 0.1}
     assert np.allclose(
-        evaluate_theory("sgktlf 1 2", time, values),
-        evaluate_theory("statGssKTLF 1 2", time, values),
+        evaluate_theory("statExpKT 2", time, values),
+        lorentzian_kt(time, 0.3),
     )
     assert np.allclose(
-        evaluate_theory("dgktlf 1 2 3", time, values),
-        evaluate_theory("dynGssKTLF 1 2 3", time, values),
+        evaluate_theory("statExpKTLF 1 2", time, values),
+        static,
+    )
+    assert np.allclose(
+        evaluate_theory("dynExpKTLF 1 2 3", time, values),
+        dynamic,
     )

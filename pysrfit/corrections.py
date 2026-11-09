@@ -78,7 +78,12 @@ class RunCorrectionState:
     def _initial_t0(self, run: RunConfig) -> dict[tuple[str, int], int | None]:
         tokens = run.tokens("t0")
         expected = len(self._indices["forward"]) * len(self.roles)
-        configured = [float(value) for value in tokens] if len(tokens) == expected else []
+        if len(tokens) == 1:
+            configured = [float(tokens[0])] * expected
+        elif len(tokens) == expected:
+            configured = [float(value) for value in tokens]
+        else:
+            configured = []
         result = {}
         for position in range(len(self._indices["forward"])):
             for role_index, role in enumerate(self.roles):
@@ -130,7 +135,15 @@ class RunCorrectionState:
         if name == "background" and not self.background_editable:
             raise ValueError("Background limits are ignored when backgr.fit is used")
         if name == "t0":
-            self.t0[(target.role, target.position)] = channel
+            # The editable t0 is a common override. One visual selection is
+            # therefore broadcast to every detector in both groups.
+            for detector_key in self.t0:
+                self.t0[detector_key] = channel
+        elif name in {"data", "background"}:
+            # Range limits are shared by default, so one visual selection
+            # configures both forward and backward groups.
+            for role in self.roles:
+                self.ranges[name][role][endpoint] = channel
         else:
             self.ranges[name][target.role][endpoint] = channel
 
@@ -145,7 +158,7 @@ class RunCorrectionState:
 
     def validate(self) -> None:
         if any(value is None for value in self.t0.values()):
-            raise ValueError("Set t0 for every selected detector")
+            raise ValueError("Set t0 once for the selected detector groups")
         range_names = ("data", "background") if self.background_editable else ("data",)
         for name in range_names:
             for role in self.roles:
@@ -163,7 +176,11 @@ class RunCorrectionState:
         for position in range(len(self._indices["forward"])):
             for role in self.roles:
                 t0_values.append(str(self.t0[(role, position)]))
-        run.options["t0"] = t0_values
+        run.options["t0"] = (
+            [t0_values[0]]
+            if len(set(t0_values)) == 1
+            else t0_values
+        )
         range_names = ("data", "background") if self.background_editable else ("data",)
         for name in range_names:
             values = [

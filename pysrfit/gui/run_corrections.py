@@ -48,12 +48,15 @@ class RunCorrectionsDialog(QDialog):
         if self.state.background_editable:
             help_text = (
                 "Move the pointer over the raw histogram and press: "
-                "t = t0, d/D = data start/end, b/B = background start/end. "
+                "t = t0 for all detectors, d/D = data start/end for all detectors, "
+                "b/B = background start/end for all detectors. "
                 "Uppercase D and B mean Shift+D and Shift+B.")
         else:
             help_text = (
                 "Move the pointer over the raw histogram and press: "
-                "t = t0, d/D = data start/end. The constant background is fitted, "
+                "t = t0 for all detectors, "
+                "d/D = data start/end for all detectors. "
+                "The constant background is fitted, "
                 "so background-range markers are not used.")
         help_label = QLabel(help_text)
         help_label.setWordWrap(True)

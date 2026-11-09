@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from pysrfit.io.base import DetectorInfo, HistogramRun, Spectrum
 from pysrfit.models import DEFAULT_PACKING, Project, RunConfig
@@ -188,6 +189,50 @@ def test_asymmetry_run_gets_a_floating_alpha_parameter():
     assert not alpha.fixed
     assert alpha.lower > 0
     assert "asymmetry_components" in session.data.metadata
+
+
+def test_failed_asymmetry_preparation_rolls_back_automatic_alpha():
+    raw = HistogramRun(
+        np.arange(20) * 0.01,
+        np.ones((2, 20)),
+        detectors=[DetectorInfo(1, "Forw"), DetectorInfo(2, "Back")],
+    )
+    run = RunConfig(fittype=2, options={
+        "forward": ["1"], "backward": ["2"], "packing": ["1"],
+    })
+    session = AnalysisSession(Project(parameters=[], runs=[run]))
+    session.raw_data = raw
+
+    with pytest.raises(ValueError, match="No t0 supplied"):
+        session.process_raw_data()
+
+    assert not session.project.parameters
+    assert not run.tokens("alpha")
+
+
+def test_missing_alpha_reference_is_repaired_when_processing_succeeds():
+    time = np.arange(50) * 0.01
+    counts = np.vstack((np.full(50, 110.0), np.full(50, 90.0)))
+    counts[:, :5] = 10.0
+    raw = HistogramRun(
+        time,
+        counts,
+        detectors=[DetectorInfo(1, "Forw", 5), DetectorInfo(2, "Back", 5)],
+    )
+    run = RunConfig(fittype=2, options={
+        "forward": ["1"], "backward": ["2"], "t0": ["5"],
+        "background": ["0", "4", "0", "4"],
+        "data": ["5", "30", "5", "30"], "packing": ["1"],
+        "alpha": ["4"],
+    })
+    session = AnalysisSession(Project(parameters=[], runs=[run]))
+    session.raw_data = raw
+
+    added = session.process_raw_data()
+
+    assert added == (4,)
+    assert session.alpha_parameter(0).index == 4
+    assert session.alpha_parameter(0).name == "alpha_run1"
 
 
 def test_single_histogram_gets_normalization_and_background_parameters():

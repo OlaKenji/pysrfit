@@ -54,7 +54,11 @@ def _metadata_t0(data: HistogramRun, indices: Sequence[int]) -> list[float]:
     result = [data.detectors[index].t0_bin for index in indices]
     if any(value is None for value in result):
         missing = [data.detectors[index].name for index, value in zip(indices, result) if value is None]
-        raise ValueError(f"No t0 supplied and detector metadata has no t0 for {', '.join(missing)}")
+        examples = ", ".join(missing[:3])
+        suffix = f" and {len(missing) - 3} more" if len(missing) > 3 else ""
+        raise ValueError(
+            "No t0 supplied and detector metadata has no usable t0 for "
+            f"{examples}{suffix}")
     return [float(value) for value in result]
 
 
@@ -67,14 +71,22 @@ def _t0_groups(
     tokens = _numbers(run, "t0", default=[])
     if not tokens:
         return _metadata_t0(data, forward), _metadata_t0(data, backward)
+    if len(tokens) == 1:
+        # A scalar time zero is a convenient override for detector banks whose
+        # histograms share the same prompt channel.
+        return [tokens[0]] * len(forward), [tokens[0]] * len(backward)
     if not backward:
         if len(tokens) != len(forward):
-            raise ValueError("Single-histogram t0 needs one value per grouped detector")
+            raise ValueError(
+                "Single-histogram t0 needs one value for all detectors or "
+                "one value per grouped detector")
         return tokens, []
     if len(forward) != len(backward):
         raise ValueError("Asymmetry detector groups currently require equal sizes")
     if len(tokens) != 2 * len(forward):
-        raise ValueError("Asymmetry t0 order is forward1 backward1 [forward2 backward2 ...]")
+        raise ValueError(
+            "Asymmetry t0 needs one value for all detectors or the order "
+            "forward1 backward1 [forward2 backward2 ...]")
     return tokens[0::2], tokens[1::2]
 
 

@@ -86,6 +86,38 @@ def test_raw_histogram_default_configuration_uses_detector_metadata(tmp_path):
     assert run.file_metadata == {"temperature": "5 K", "sample": "reference"}
 
 
+def test_unknown_detector_layout_is_left_unconfigured(tmp_path):
+    time = np.arange(20) * 0.01
+    session = AnalysisSession()
+    session.raw_data = HistogramRun(
+        time,
+        np.ones((3, 20)),
+        metadata={"instrument": "Future instrument"},
+        detectors=[
+            DetectorInfo(1, "Detector A", 5, 6, 19),
+            DetectorInfo(2, "Detector B", 5, 6, 19),
+            DetectorInfo(3, "Detector C", 5, 6, 19),
+        ],
+    )
+
+    run = session.default_run_for_raw_data(tmp_path / "future.root")
+
+    assert not run.tokens("forward")
+    assert not run.tokens("backward")
+    session.project.runs = [run]
+    original_parameters = list(session.project.parameters)
+    try:
+        session.process_raw_data()
+    except ValueError as exc:
+        assert "unrecognized layout" in str(exc)
+    else:
+        raise AssertionError("Unknown layout should require detector configuration")
+    assert session.project.parameters == original_parameters
+    assert not any(
+        parameter.name.startswith("alpha_run")
+        for parameter in session.project.parameters)
+
+
 def test_project_data_discovery_does_not_load_arrays(tmp_path):
     source = tmp_path / "run.dat"
     source.write_text("data")

@@ -297,12 +297,17 @@ def test_revert_fit_toggles_exact_pre_fit_text_and_latest_result(
             ndf=10,
             run_chi2=[12.0],
             run_points=[20],
+            automatically_fixed=[],
         )
 
     monkeypatch.setattr("pysrfit.gui.main_window.fit_global", fake_fit)
+    saves = []
+    monkeypatch.setattr(
+        analysis, "save_project", lambda: saves.append(True) or True)
     analysis.fit()
 
     result_text = analysis.parameters_edit.toPlainText()
+    assert saves == [True]
     assert result_text != before_text
     assert analysis.revert_fit_button.isEnabled()
     assert analysis.revert_fit_button.text() == "Revert fit"
@@ -320,6 +325,27 @@ def test_revert_fit_toggles_exact_pre_fit_text_and_latest_result(
     assert analysis.parameters_edit.toPlainText() == result_text
     assert analysis.project.parameter_values() == fitted_values
     assert analysis.revert_fit_button.text() == "Revert fit"
+    window.close()
+
+
+def test_save_uses_current_path_and_save_as_chooses_a_new_path(
+        application, tmp_path, monkeypatch):
+    window = MainWindow()
+    analysis = window.current_analysis()
+    current = tmp_path / "current.pysrfit"
+    analysis.project.location = current
+
+    assert analysis.save_project()
+    assert current.is_file()
+
+    replacement = tmp_path / "renamed"
+    monkeypatch.setattr(
+        "pysrfit.gui.main_window.QFileDialog.getSaveFileName",
+        lambda *_args, **_kwargs: (str(replacement), ""),
+    )
+    assert analysis.save_as_dialog()
+    assert (tmp_path / "renamed.pysrfit").is_file()
+    assert analysis.project.location == tmp_path / "renamed.pysrfit"
     window.close()
 
 

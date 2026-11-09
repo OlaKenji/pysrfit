@@ -46,7 +46,7 @@ def load_data(path: str | Path) -> Spectrum | HistogramRun:
     return REGISTRY.load(path)
 
 
-# Importing built-ins here keeps optional reader dependencies in their modules.
+# Reader dependencies are imported lazily by each loader so startup remains fast.
 from .readers import BUILTIN_LOADERS  # noqa: E402
 
 for _loader in BUILTIN_LOADERS:

@@ -75,10 +75,15 @@ class MainWindow(QMainWindow):
         file_menu = self.menuBar().addMenu("&File")
         self._action(file_menu, "New analysis", self.add_analysis, "Ctrl+N")
         self._action(file_menu, "Open project / .msr in new tab...", self.open_dialog, "Ctrl+O")
-        self._action(file_menu, "Open data in new analysis...", self.open_data_dialog, "Ctrl+Shift+O")
+        self._action(
+            file_menu, "Add data files…",
+            lambda: self._call("add_run_files_dialog"), "Ctrl+Shift+O")
         self._action(file_menu, "Collect fit results...", self.collect_results_dialog)
         file_menu.addSeparator()
-        self._action(file_menu, "Save current project...", lambda: self._call("save_dialog"), "Ctrl+S")
+        self._action(file_menu, "Save", lambda: self._call("save_project"), "Ctrl+S")
+        self._action(
+            file_menu, "Save As...", lambda: self._call("save_as_dialog"),
+            "Ctrl+Shift+S")
         self._action(file_menu, "Export current plot as PNG...", lambda: self._call("export_plot"))
         self._action(file_menu, "Close analysis tab", self.close_current_analysis, "Ctrl+W")
         file_menu.addSeparator()
@@ -86,7 +91,9 @@ class MainWindow(QMainWindow):
 
         analysis_menu = self.menuBar().addMenu("&Analysis")
         self._action(analysis_menu, "Change data source...", lambda: self._call("change_data_source_dialog"), "Ctrl+D")
-        self._action(analysis_menu, "Update theory preview", lambda: self._call("redraw"), "Ctrl+R")
+        self._action(
+            analysis_menu, "Apply parameters",
+            lambda: self._call("apply_parameters"), "Ctrl+R")
         self._action(analysis_menu, "Fit", lambda: self._call("fit"), "Ctrl+F")
 
         toolbar = QToolBar("Analysis tabs")
@@ -153,13 +160,6 @@ class MainWindow(QMainWindow):
             "Projects and musrfit (*.pysrfit *.msr);;All files (*)")
         if file:
             self.add_analysis(path=file)
-
-    def open_data_dialog(self):
-        files, _ = QFileDialog.getOpenFileNames(
-            self, "Open μSR data in a new analysis", "",
-            "Data (*.txt *.csv *.dat *.nxs *.nexus *.h5 *.hdf5 *.bin *.mdu *.root *.mud);;All files (*)")
-        if files:
-            self.add_analysis(data_paths=files)
 
     def collect_results_dialog(self):
         files, _ = QFileDialog.getOpenFileNames(
@@ -307,7 +307,7 @@ class AnalysisWorkspace(QWidget):
         for text, fn in [
             ("Fit", self.fit),
             ("Sequential fit…", self.start_sequential_fit),
-            ("Save", self.save_dialog),
+            ("Save", self.save_project),
         ]:
             b = QPushButton(text)
             b.clicked.connect(fn)
@@ -1121,9 +1121,9 @@ class AnalysisWorkspace(QWidget):
     def add_run_files_dialog(self):
         files, _ = QFileDialog.getOpenFileNames(
             self,
-            "Add μSR runs to the global analysis",
+            "Add μSR data files to the current analysis",
             "",
-            "Data (*.txt *.csv *.dat *.nxs *.nexus *.h5 *.hdf5 *.bin *.mdu *.root *.mud);;All files (*)",
+            "Data (*.txt *.csv *.dat *.nxs *.nexus *.h5 *.hdf5 *.bin *.mdu *.root *.mud *.msr);;All files (*)",
         )
         if files:
             self.add_run_files(files)
@@ -1543,7 +1543,7 @@ class AnalysisWorkspace(QWidget):
 
     def change_data_source_dialog(self):
         file, _ = QFileDialog.getOpenFileName(self, "Change μSR data source", "",
-            "Data (*.txt *.csv *.dat *.nxs *.nexus *.h5 *.hdf5 *.bin *.mdu *.root *.mud);;All files (*)")
+            "Data (*.txt *.csv *.dat *.nxs *.nexus *.h5 *.hdf5 *.bin *.mdu *.root *.mud *.msr);;All files (*)")
         if file:
             try:
                 self._attach_data_source(Path(file))
@@ -1629,31 +1629,62 @@ class AnalysisWorkspace(QWidget):
         for error in errors:
             self._log(error)
 
-    def save_dialog(self):
+    def _save_project_to(self, destination: Path, *, relocating: bool) -> bool:
+        """Write the native project, preserving data references across Save As."""
+        try:
+            destination = destination.with_suffix(".pysrfit").resolve()
+            if relocating:
+                # Resolve relative references against the old project directory
+                # before the project acquires its new location.
+                old_root = (
+                    self.project.location.parent
+                    if self.project.location is not None else Path.cwd()
+                )
+                for key in ("data_override", "spectrum_path"):
+                    value = getattr(self.project, key)
+                    if value and not Path(value).is_absolute():
+                        setattr(self.project, key, str((old_root / value).resolve()))
+                for run in self.project.runs:
+                    if run.source and not Path(run.source).is_absolute():
+                        run.source = str((old_root / run.source).resolve())
+            self.project.save(destination)
+            self._log(f"Saved {destination}")
+            self.title_changed.emit()
+            return True
+        except Exception as exc:
+            self._error(f"Save failed: {exc}")
+            return False
+
+    def save_project(self) -> bool:
+        """Save in place, asking for a native path only when none exists yet."""
         try:
             self._sync()
         except Exception as exc:
             self._error(f"Cannot save: {exc}")
-            return
-        default = str(self.project.location.with_suffix(".pysrfit")) if self.project.location else "project.pysrfit"
-        file, _ = QFileDialog.getSaveFileName(self, "Save native project", default, "PySRFit project (*.pysrfit)")
-        if file:
+            return False
+        location = self.project.location
+        if location is None or location.suffix.lower() != ".pysrfit":
+            return self.save_as_dialog(already_synced=True)
+        return self._save_project_to(location, relocating=False)
+
+    def save_as_dialog(self, *, already_synced: bool = False) -> bool:
+        """Choose a new native project path and save there."""
+        if not already_synced:
             try:
-                dest = Path(file).with_suffix(".pysrfit").resolve()
-                # Adjust relative references so a saved .pysrfit keeps pointing to the source files.
-                old_root = self.project.location.parent if self.project.location else Path.cwd()
-                for key in ("data_override", "spectrum_path"):
-                    val = getattr(self.project, key)
-                    if val and not Path(val).is_absolute():
-                        setattr(self.project, key, str((old_root / val).resolve()))
-                for run in self.project.runs:
-                    if run.source and not Path(run.source).is_absolute():
-                        run.source = str((old_root / run.source).resolve())
-                self.project.save(dest)
-                self._log(f"Saved {dest}")
-                self.title_changed.emit()
+                self._sync()
             except Exception as exc:
-                self._error(f"Save failed: {exc}")
+                self._error(f"Cannot save: {exc}")
+                return False
+        default = (
+            str(self.project.location.with_suffix(".pysrfit"))
+            if self.project.location is not None else "project.pysrfit"
+        )
+        file, _ = QFileDialog.getSaveFileName(
+            self, "Save native project as", default,
+            "PySRFit project (*.pysrfit)")
+        if not file:
+            return False
+        return self._save_project_to(Path(file), relocating=True)
 
     def activate_custom(self):
         source = self.custom_edit.toPlainText()
@@ -2112,6 +2143,8 @@ class AnalysisWorkspace(QWidget):
                     message="MINUIT did not converge to a valid minimum",
                 )
                 self._log("MINUIT did not converge to a valid minimum; parameters NOT applied")
+                if not self.save_project():
+                    self._log("The failed fit record was not saved")
                 return
             for p in self.project.parameters:
                 p.value = result.values[p.index]
@@ -2138,6 +2171,8 @@ class AnalysisWorkspace(QWidget):
                     f"  Run {index + 1} {run.label or Path(run.source).name}: "
                     f"χ²={chi2:.5g} for {points} points")
             self.redraw()
+            if not self.save_project():
+                self._log("The fit result was not saved")
         except Exception as exc:
             self._error(f"Fit failed: {exc}")
 

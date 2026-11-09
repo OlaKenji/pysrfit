@@ -21,6 +21,7 @@ _RUNTIME_METADATA_KEYS = {
     "source", "reader", "derived", "fit_type", "alpha", "packing",
     "forward", "backward", "t0", "background", "asymmetry_components",
     "background_per_packed_bin", "facility", "instrument", "format",
+    "suggested_run_configuration",
 }
 
 
@@ -325,14 +326,36 @@ class AnalysisSession:
         data = self.state(selected).raw_data
         if data is None:
             raise ValueError("No raw histogram data loaded")
-        forward = next(
-            (detector for detector in data.detectors if detector.name.casefold().startswith("forw")),
-            data.detectors[0],
-        )
-        backward = next(
-            (detector for detector in data.detectors if detector.name.casefold().startswith("back")),
-            data.detectors[min(1, len(data.detectors) - 1)],
-        )
+        suggestion = data.metadata.get("suggested_run_configuration", {})
+        if not isinstance(suggestion, dict):
+            suggestion = {}
+        fittype = int(suggestion.get("fittype", 2))
+        if fittype not in (0, 2):
+            fittype = 2
+
+        def suggested_detectors(key: str) -> list:
+            references = suggestion.get(key, [])
+            if not isinstance(references, (list, tuple)):
+                return []
+            return [data.detectors[data.detector_index(reference)]
+                    for reference in references]
+
+        forward = suggested_detectors("forward")
+        backward = suggested_detectors("backward") if fittype == 2 else []
+        if not suggestion:
+            named_forward = [
+                detector for detector in data.detectors
+                if detector.name.strip().casefold() in {"forw", "forward"}
+            ]
+            named_backward = [
+                detector for detector in data.detectors
+                if detector.name.strip().casefold() in {"back", "backward"}
+            ]
+            if len(named_forward) == len(named_backward) == 1:
+                forward, backward = named_forward, named_backward
+        if fittype == 2 and len(forward) != len(backward):
+            raise ValueError(
+                "Suggested asymmetry detector groups must have equal sizes")
         source = Path(path).expanduser().resolve()
         old = self.project.runs[selected] if selected < len(self.project.runs) else None
         run = RunConfig(
@@ -342,27 +365,102 @@ class AnalysisSession:
             instrument=str(data.metadata.get("instrument", "")),
             facility=str(data.metadata.get("facility", "")),
             format_hint=str(data.metadata.get("format", data.metadata.get("reader", ""))),
-            fittype=2,
+            fittype=fittype,
             file_metadata=persistent_file_metadata(data.metadata),
             user_metadata=dict(old.user_metadata) if old else {},
         )
-        run.options["forward"] = [str(forward.number)]
-        run.options["backward"] = [str(backward.number)]
-        if forward.t0_bin is not None and backward.t0_bin is not None:
-            run.options["t0"] = [str(forward.t0_bin), str(backward.t0_bin)]
+
+        def detector_tokens(detectors) -> list[str]:
+            numbers = [detector.number for detector in detectors]
+            tokens: list[str] = []
+            start = stop = None
+            for number in numbers + [None]:
+                if start is None:
+                    start = stop = number
+                elif number is not None and number == stop + 1:
+                    stop = number
+                else:
+                    tokens.append(str(start) if start == stop else f"{start}-{stop}")
+                    start = stop = number
+            return tokens
+
+        if forward:
+            run.options["forward"] = detector_tokens(forward)
+        if backward:
+            run.options["backward"] = detector_tokens(backward)
+        all_t0_available = bool(forward) and all(
+            detector.t0_bin is not None for detector in forward + backward)
+        # Large NeXus detector banks use the per-detector metadata directly.
+        # Writing hundreds of identical t0 values into the editable RUN field
+        # makes the project needlessly unwieldy.
+        if all_t0_available and len(forward) + len(backward) <= 64:
+            if backward:
+                run.options["t0"] = [
+                    str(detector.t0_bin)
+                    for pair in zip(forward, backward)
+                    for detector in pair
+                ]
+            else:
+                run.options["t0"] = [
+                    str(detector.t0_bin) for detector in forward]
+        fixed_background = suggestion.get("backgr.fix")
+        if (backward and isinstance(fixed_background, (list, tuple))
+                and len(fixed_background) >= 2):
+            run.options["backgr.fix"] = [
+                str(fixed_background[0]), str(fixed_background[1])]
+        elif (backward and all(
+                key in detector.metadata
+                for detector in (forward[0], backward[0])
+                for key in ("background_start", "background_end"))):
             run.options["background"] = [
-                "0", str(max(0, int(forward.t0_bin) - 100)),
-                "0", str(max(0, int(backward.t0_bin) - 100)),
+                str(forward[0].metadata["background_start"]),
+                str(forward[0].metadata["background_end"]),
+                str(backward[0].metadata["background_start"]),
+                str(backward[0].metadata["background_end"]),
             ]
-        if None not in (
-            forward.first_good_bin, forward.last_good_bin,
-            backward.first_good_bin, backward.last_good_bin,
+        elif backward and all_t0_available:
+            run.options["background"] = [
+                "0", str(max(0, int(forward[0].t0_bin) - 100)),
+                "0", str(max(0, int(backward[0].t0_bin) - 100)),
+            ]
+        if backward and None not in (
+            forward[0].first_good_bin, forward[0].last_good_bin,
+            backward[0].first_good_bin, backward[0].last_good_bin,
         ):
+            forward_stop = forward[0].last_good_bin
+            backward_stop = backward[0].last_good_bin
+            suggested_stop_us = suggestion.get("data_stop_us")
+            if suggested_stop_us is not None and all_t0_available:
+                span = max(float(suggested_stop_us), data.channel_width_us)
+                forward_stop = min(
+                    forward_stop,
+                    int(forward[0].t0_bin + span / data.channel_width_us),
+                )
+                backward_stop = min(
+                    backward_stop,
+                    int(backward[0].t0_bin + span / data.channel_width_us),
+                )
             run.options["data"] = [
-                str(forward.first_good_bin), str(forward.last_good_bin),
-                str(backward.first_good_bin), str(backward.last_good_bin),
+                str(forward[0].first_good_bin), str(forward_stop),
+                str(backward[0].first_good_bin), str(backward_stop),
             ]
-        run.options["packing"] = [str(DEFAULT_PACKING)]
+        elif forward and not backward and None not in (
+            forward[0].first_good_bin, forward[0].last_good_bin,
+        ):
+            forward_stop = forward[0].last_good_bin
+            suggested_stop_us = suggestion.get("data_stop_us")
+            if suggested_stop_us is not None and all_t0_available:
+                span = max(float(suggested_stop_us), data.channel_width_us)
+                forward_stop = min(
+                    forward_stop,
+                    int(forward[0].t0_bin + span / data.channel_width_us),
+                )
+            run.options["data"] = [
+                str(forward[0].first_good_bin),
+                str(forward_stop),
+            ]
+        packing = int(suggestion.get("packing", DEFAULT_PACKING))
+        run.options["packing"] = [str(max(1, packing))]
         if old:
             for key in ("map", "alpha", "fit"):
                 if old.tokens(key):
@@ -491,6 +589,12 @@ class AnalysisSession:
         if state.raw_data is None or selected >= len(self.project.runs):
             raise ValueError("No raw histogram data and RUN configuration are available")
         run = self.project.runs[selected]
+        if not run.tokens("forward"):
+            raise ValueError(
+                "Select a fit type and detector(s) for this unrecognized layout")
+        if run.fittype == 2 and not run.tokens("backward"):
+            raise ValueError(
+                "Forward/backward asymmetry requires a backward detector group")
         added_parameters = []
         added_alpha = self.ensure_alpha_parameter(selected)
         if added_alpha is not None:

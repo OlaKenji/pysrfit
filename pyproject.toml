@@ -4,12 +4,24 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pysrfit"
-version = "0.2.0"
+version = "1.0.0"
 description = "GUI-first, extensible muon spin spectroscopy fitting workbench"
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "MIT"}
-authors = [{name = "PySRFit contributors"}]
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "Ola Kenji Forslund"}]
+keywords = ["muSR", "muon", "spectroscopy", "fitting", "physics"]
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Physics",
+]
 dependencies = [
     "numpy>=1.24",
     "matplotlib>=3.7",
@@ -22,6 +34,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]
+
+[project.urls]
+Homepage = "https://github.com/OlaKenji/pysrfit"
+Repository = "https://github.com/OlaKenji/pysrfit"
+Issues = "https://github.com/OlaKenji/pysrfit/issues"
 
 [project.gui-scripts]
 pysrfit = "pysrfit.app:main"

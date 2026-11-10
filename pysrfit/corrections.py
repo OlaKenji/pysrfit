@@ -24,6 +24,11 @@ class HistogramTarget:
 class RunCorrectionState:
     """Hold visual t0/data/background selections before applying them to a RUN."""
 
+    # A small bank is practical to configure histogram-by-histogram. Large
+    # NeXus banks normally share corrections, so broadcasting is the useful
+    # default. The GUI still lets the user override either choice.
+    BROADCAST_TARGET_THRESHOLD = 8
+
     MARKERS = {
         "t": ("t0", None),
         "d": ("data", 0),
@@ -59,6 +64,10 @@ class RunCorrectionState:
     @property
     def background_editable(self) -> bool:
         return not (self.fittype == 0 and self._has_fitted_background)
+
+    @property
+    def default_apply_all(self) -> bool:
+        return len(self.targets) > self.BROADCAST_TARGET_THRESHOLD
 
     def _make_targets(self) -> list[HistogramTarget]:
         targets = []
@@ -124,7 +133,14 @@ class RunCorrectionState:
             "background": list(self.ranges["background"][target.role]),
         }
 
-    def set_marker(self, target_index: int, key: str, channel: int) -> None:
+    def set_marker(
+        self,
+        target_index: int,
+        key: str,
+        channel: int,
+        *,
+        apply_all: bool = True,
+    ) -> None:
         if key not in self.MARKERS:
             raise ValueError(f"Unknown correction key {key!r}")
         channel = int(channel)
@@ -135,14 +151,14 @@ class RunCorrectionState:
         if name == "background" and not self.background_editable:
             raise ValueError("Background limits are ignored when backgr.fit is used")
         if name == "t0":
-            # The editable t0 is a common override. One visual selection is
-            # therefore broadcast to every detector in both groups.
-            for detector_key in self.t0:
-                self.t0[detector_key] = channel
+            if apply_all:
+                for detector_key in self.t0:
+                    self.t0[detector_key] = channel
+            else:
+                self.t0[(target.role, target.position)] = channel
         elif name in {"data", "background"}:
-            # Range limits are shared by default, so one visual selection
-            # configures both forward and backward groups.
-            for role in self.roles:
+            roles = self.roles if apply_all else (target.role,)
+            for role in roles:
                 self.ranges[name][role][endpoint] = channel
         else:
             self.ranges[name][target.role][endpoint] = channel

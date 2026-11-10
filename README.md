@@ -1,6 +1,6 @@
 # pySRFit
 
-A modern, interactive GUI application for analysing muon spin rotation, relaxation and resonance (μSR) data. PySRFit is inspired by musrfit and uses a similar parameter and THEORY style.
+A modern, interactive GUI application for analysing muon spin rotation, relaxation and resonance (μSR) data. pySRFit is inspired by musrfit and uses a similar parameter and THEORY style.
 
 ![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
 ![PyQt5](https://img.shields.io/badge/PyQt5-5.15+-green.svg)
@@ -49,8 +49,8 @@ pysrfit
 
 - **PSI:** MusrRoot `.root` files, tested with GPS, GPD, FLAME, HAL and LEM.
 - **ISIS:** NeXus `.nxs` files.
-- **J-PARC:** NeXus `.nxs` files, tested with MS1 and MD1 data.
-- **TRIUMF:** binary MUD `.msr` and `.mud` files.
+- **J-PARC:** NeXus `.nxs` files, tested with MS1 and MD1.
+- **TRIUMF:** binary MUD `.msr` and `.mud` files, tested with M20 and M15.
 
 ## Theory
 

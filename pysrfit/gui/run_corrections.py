@@ -48,14 +48,15 @@ class RunCorrectionsDialog(QDialog):
         if self.state.background_editable:
             help_text = (
                 "Move the pointer over the raw histogram and press: "
-                "t = t0 for all detectors, d/D = data start/end for all detectors, "
-                "b/B = background start/end for all detectors. "
-                "Uppercase D and B mean Shift+D and Shift+B.")
+                "t = t0, d/D = data start/end, and b/B = background "
+                "start/end. Choose below whether edits affect the current "
+                "histogram/group or every selected histogram. Uppercase D and "
+                "B mean Shift+D and Shift+B.")
         else:
             help_text = (
                 "Move the pointer over the raw histogram and press: "
-                "t = t0 for all detectors, "
-                "d/D = data start/end for all detectors. "
+                "t = t0 and d/D = data start/end. Choose below whether edits "
+                "affect the current histogram/group or every selected histogram. "
                 "The constant background is fitted, "
                 "so background-range markers are not used.")
         help_label = QLabel(help_text)
@@ -69,6 +70,13 @@ class RunCorrectionsDialog(QDialog):
             self.target_combo.addItem(target.label)
         self.target_combo.currentIndexChanged.connect(self._target_changed)
         selector_row.addWidget(self.target_combo, 1)
+        selector_row.addWidget(QLabel("Apply edits to:"))
+        self.scope_combo = QComboBox()
+        self.scope_combo.addItem("Current histogram / group", False)
+        self.scope_combo.addItem("All selected histograms", True)
+        default_scope = self.scope_combo.findData(self.state.default_apply_all)
+        self.scope_combo.setCurrentIndex(max(0, default_scope))
+        selector_row.addWidget(self.scope_combo)
         layout.addLayout(selector_row)
 
         self.figure = Figure(figsize=(10, 6), constrained_layout=True)
@@ -187,7 +195,12 @@ class RunCorrectionsDialog(QDialog):
             self._update_status("Move the pointer over the histogram first.")
             return
         try:
-            self.state.set_marker(self.target_index, key, self._cursor_channel)
+            self.state.set_marker(
+                self.target_index,
+                key,
+                self._cursor_channel,
+                apply_all=bool(self.scope_combo.currentData()),
+            )
         except ValueError as exc:
             self._update_status(str(exc))
             return

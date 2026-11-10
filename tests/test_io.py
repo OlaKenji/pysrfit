@@ -18,6 +18,17 @@ from pysrfit.models import Project, RunConfig
 from pysrfit.session import AnalysisSession
 
 
+DATA_DIR = Path(__file__).parent / "data"
+
+
+def local_fixture(*parts: str) -> Path:
+    """Return an optional, locally held test-data file or skip its test."""
+    path = DATA_DIR.joinpath(*parts)
+    if not path.is_file():
+        pytest.skip(f"Local test fixture is unavailable: {path.name}")
+    return path
+
+
 def test_csv_3col_and_uncertainty_guard(tmp_path):
     file = tmp_path / "data.csv"
     np.savetxt(file, [[0, .2, .01], [1, .1, .01]], delimiter=",")
@@ -158,7 +169,7 @@ def test_hdf5_nxdata_subset(tmp_path):
 
 def test_psi_gps_musrroot_fixture():
     pytest.importorskip("uproot")
-    path = Path(__file__).parent / "data/psi/gps/deltatbc_tdc_gps_2025_3092.root"
+    path = local_fixture("psi", "gps", "deltatbc_tdc_gps_2025_3092.root")
     run = load_data(path)
     assert [loader.name for loader in LOADERS][:2] == ["MusrRoot", "NeXus NXdata"]
     assert run.counts.shape == (15, 102401)
@@ -192,7 +203,7 @@ def test_psi_gps_musrroot_fixture():
 def test_other_psi_musrroot_instrument_fixtures(
         relative, shape, instrument, run_number):
     pytest.importorskip("uproot")
-    run = load_data(Path(__file__).parent / "data/psi" / relative)
+    run = load_data(local_fixture("psi", relative))
 
     assert run.counts.shape == shape
     assert run.metadata["facility"] == "PSI"
@@ -217,7 +228,7 @@ def test_other_psi_musrroot_instrument_fixtures(
 def test_psi_musrroot_default_configuration_is_fit_ready(
         relative, fittype, forward, backward, kind):
     pytest.importorskip("uproot")
-    path = Path(__file__).parent / "data/psi" / relative
+    path = local_fixture("psi", relative)
     session = AnalysisSession(
         Project(runs=[RunConfig(source=str(path))]), loader=load_data)
     session.attach_data_source(path)
@@ -241,7 +252,7 @@ def test_psi_musrroot_default_configuration_is_fit_ready(
 def test_modern_hdf5_nexus_facility_fixtures(
         relative, shape, instrument, run_number):
     pytest.importorskip("h5py")
-    run = load_data(Path(__file__).parent / "data" / relative)
+    run = load_data(local_fixture(relative))
 
     assert run.counts.shape == shape
     assert run.metadata["instrument"] == instrument
@@ -261,7 +272,7 @@ def test_isis_emu_and_jparc_ms1_default_configurations_are_fit_ready():
         ("jparc/ms1/154519.nxs", ["1-320"], ["321-640"]),
     ]
     for relative, forward, backward in fixtures:
-        path = Path(__file__).parent / "data" / relative
+        path = local_fixture(relative)
         session = AnalysisSession(
             Project(runs=[RunConfig(source=str(path))]), loader=load_data)
         session.attach_data_source(path)
@@ -277,7 +288,7 @@ def test_isis_emu_and_jparc_ms1_default_configurations_are_fit_ready():
 
 def test_jparc_bad_timing_keeps_groups_but_requires_manual_timing():
     pytest.importorskip("h5py")
-    path = Path(__file__).parent / "data/jparc/md1/016752.nxs"
+    path = local_fixture("jparc", "md1", "016752.nxs")
     raw = load_data(path)
 
     suggestion = raw.metadata["suggested_run_configuration"]
@@ -316,7 +327,7 @@ def test_jparc_bad_timing_keeps_groups_but_requires_manual_timing():
 
 
 def test_legacy_hdf4_nexus_has_an_explicit_error():
-    path = Path(__file__).parent / "data/isis/hifi/hifi00062999.nxs"
+    path = local_fixture("isis", "hifi", "hifi00062999.nxs")
     with pytest.raises(UnsupportedFormatError, match="Legacy HDF4 NeXus"):
         load_data(path)
 
@@ -330,7 +341,7 @@ def test_triumf_mud_fixtures(relative, shape, instrument, run_number):
         import mudpy  # noqa: F401
     except (ImportError, OSError) as exc:
         pytest.skip(f"mud-py is unavailable or architecture-incompatible: {exc}")
-    path = Path(__file__).parent / "data" / relative
+    path = local_fixture(relative)
     run = load_data(path)
 
     assert run.counts.shape == shape

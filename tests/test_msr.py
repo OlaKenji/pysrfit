@@ -23,6 +23,16 @@ def test_msr_import_and_preview():
     assert p.runs[0].tokens("forward") == ["3"]
     assert p.runs[0].tokens("backward") == ["4"]
     assert p.runs[0].tokens("t0") == ["401.0", "403.0"]
+    assert p.display["t_start"] == pytest.approx(0.002)
+    assert p.display["t_stop"] == pytest.approx(8.0)
+    assert p.display["y_min"] == pytest.approx(0.0)
+    assert p.display["y_max"] == pytest.approx(0.3)
+    assert not p.display["y_auto"]
+    assert p.display["view_packing"] == 200
+    assert any(
+        line.split()[:2] == ["plot", "POWER"]
+        for line in p.msr_sections["FOURIER"]
+    )
     assert "FOURIER" in p.msr_sections
     assert "STATISTIC" in p.msr_sections
     a = evaluate_theory(p.theory, [0, 1, 8], p.parameter_values(), p.functions_text)

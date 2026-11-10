@@ -19,7 +19,10 @@ def _split_sections(raw: str) -> dict[str, list[str]]:
     section = "PREAMBLE"
     for line in raw.splitlines():
         stripped = line.strip()
-        first = stripped.split(None, 1)[0].upper() if stripped else ""
+        # musrfit section headers are uppercase. Keep this case-sensitive so
+        # directives such as FOURIER's ``plot POWER`` are not mistaken for a
+        # new PLOT section.
+        first = stripped.split(None, 1)[0] if stripped else ""
         if first in HEADERS and not stripped.startswith("#"):
             section = first
             sections.setdefault(section, [])
@@ -87,7 +90,23 @@ def parse_msr(text: str, *, source: str | Path | None = None) -> Project:
         for line in sections["PLOT"]:
             items = _body(line).split()
             if items and items[0].lower() == "range" and len(items) >= 3:
-                project.display.update(t_start=float(items[1]), t_stop=float(items[2]))
+                start, stop = float(items[1]), float(items[2])
+                if stop <= start:
+                    raise ValueError("PLOT time range must have increasing limits")
+                project.display.update(t_start=start, t_stop=stop)
+                if len(items) >= 5:
+                    y_min, y_max = float(items[3]), float(items[4])
+                    if y_max > y_min:
+                        project.display.update(
+                            y_min=y_min, y_max=y_max, y_auto=False)
+                break
+        for line in sections["PLOT"]:
+            items = _body(line).split()
+            if items and items[0].lower() == "view_packing" and len(items) >= 2:
+                packing = int(float(items[1]))
+                if packing < 1:
+                    raise ValueError("PLOT view_packing must be positive")
+                project.display["view_packing"] = packing
                 break
     return project
 

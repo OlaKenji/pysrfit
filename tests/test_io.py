@@ -1,4 +1,5 @@
 from pathlib import Path
+import struct
 import numpy as np
 import pytest
 from pysrfit.io.base import DetectorInfo, UnsupportedFormatError, HistogramRun
@@ -29,6 +30,58 @@ def local_fixture(*parts: str) -> Path:
     return path
 
 
+def write_minimal_psi_bin(path: Path) -> None:
+    """Create a small redistributable PSI-BIN fixture from the public layout."""
+    header = bytearray(1024)
+    header[:2] = b"1N"
+
+    def integer(offset: int, value: int, size: int = 2) -> None:
+        struct.pack_into("<h" if size == 2 else "<i", header, offset, value)
+
+    def real(offset: int, value: float) -> None:
+        struct.pack_into("<f", header, offset, value)
+
+    def text(offset: int, length: int, value: str) -> None:
+        encoded = value.encode("ascii")[:length]
+        header[offset:offset + length] = encoded.ljust(length, b" ")
+
+    integer(2, 0)
+    integer(6, 42)
+    integer(28, 8)
+    integer(30, 2)
+    integer(128, 2)
+    integer(130, 128)
+    integer(132, 1)
+    integer(134, 1)
+    text(138, 10, "Sample")
+    text(148, 10, "5.0K")
+    text(158, 10, "25G")
+    text(168, 10, "long")
+    text(178, 10, "GPS")
+    text(218, 9, "01-JAN-26")
+    text(227, 9, "01-JAN-26")
+    text(236, 8, "10:00:00")
+    text(244, 8, "10:10:00")
+    text(860, 62, "Synthetic PSI-BIN fixture")
+    text(948, 4, "Forw")
+    text(952, 4, "Back")
+    for position, (t0, first, last) in enumerate(((2, 3, 7), (3, 4, 7))):
+        integer(458 + 2 * position, t0)
+        integer(490 + 2 * position, first)
+        integer(522 + 2 * position, last)
+    real(716, 5.0)
+    real(738, 0.1)
+    real(1012, 0.01)
+
+    records = np.zeros((2, 128), dtype="<i4")
+    records[0, :8] = [1, 2, 10, 20, 18, 12, 8, 4]
+    records[1, :8] = [2, 1, 3, 12, 21, 17, 9, 5]
+    for position in range(2):
+        integer(296 + 4 * position, int(records[position, :8].sum()), size=4)
+    integer(424, int(records.sum()), size=4)
+    path.write_bytes(header + records.tobytes())
+
+
 def test_csv_3col_and_uncertainty_guard(tmp_path):
     file = tmp_path / "data.csv"
     np.savetxt(file, [[0, .2, .01], [1, .1, .01]], delimiter=",")
@@ -48,7 +101,10 @@ def test_histogram_asymmetry_and_alignment():
                              "t0": ["10", "12"], "background": ["0", "5", "0", "5"],
                              "data": ["14", "30", "16", "32"], "packing": ["2"]})
     # Here all counts are constant; background subtraction is zero, invalid.
-    with pytest.raises(ValueError, match="Nonpositive denominator"):
+    with pytest.raises(
+        ValueError,
+        match="Try increasing packing or adjusting the data and background ranges",
+    ):
         make_asymmetry(data, run)
     counts[2, :6] = 10
     counts[3, :6] = 10
@@ -130,6 +186,34 @@ def test_unrecognized_binary_does_not_get_misread(tmp_path):
         load_data(p)
 
 
+def test_minimal_psi_bin_is_loaded_and_configured(tmp_path):
+    path = tmp_path / "deltat_tdc_gps_0042.bin"
+    write_minimal_psi_bin(path)
+
+    raw = load_data(path)
+
+    assert raw.counts.shape == (2, 8)
+    assert raw.metadata["facility"] == "PSI"
+    assert raw.metadata["instrument"] == "GPS"
+    assert raw.metadata["format"] == "PSI-BIN"
+    assert raw.metadata["run_number"] == 42
+    assert raw.channel_width_us == pytest.approx(0.01)
+    assert [detector.name for detector in raw.detectors] == ["Forw", "Back"]
+    assert [detector.t0_bin for detector in raw.detectors] == [2, 3]
+    assert np.array_equal(raw.counts[0], [1, 2, 10, 20, 18, 12, 8, 4])
+    assert raw.metadata["suggested_run_configuration"]["forward"] == [2]
+    assert raw.metadata["suggested_run_configuration"]["backward"] == [1]
+
+
+def test_psi_bin_rejects_truncated_payload(tmp_path):
+    path = tmp_path / "run.bin"
+    write_minimal_psi_bin(path)
+    path.write_bytes(path.read_bytes()[:-512])
+
+    with pytest.raises(UnsupportedFormatError, match="truncated"):
+        load_data(path)
+
+
 def test_instrument_suggestions_require_the_complete_expected_layout():
     hal = [
         DetectorInfo(number, name)
@@ -167,11 +251,40 @@ def test_hdf5_nxdata_subset(tmp_path):
     assert np.isclose(r.time_us[1], .001)
 
 
+def test_psi_gps_bin_fixture_is_fit_ready():
+    path = local_fixture("psi", "gps", "deltat_tdc_gps_4473.bin")
+    raw = load_data(path)
+
+    assert raw.counts.shape == (6, 24320)
+    assert raw.metadata["facility"] == "PSI"
+    assert raw.metadata["instrument"] == "GPS"
+    assert raw.metadata["run_number"] == 4473
+    assert raw.metadata["sample"] == "PrAlGe"
+    assert raw.channel_width_us == pytest.approx(0.000390625)
+    assert [detector.name for detector in raw.detectors] == [
+        "Forw", "Back", "Up", "Down", "Righ", "Left"]
+    assert [detector.t0_bin for detector in raw.detectors] == [
+        401, 400, 399, 400, 358, 400]
+
+    session = AnalysisSession(
+        Project(runs=[RunConfig(source=str(path))]), loader=load_data)
+    session.attach_data_source(path)
+    outcome = session.ensure_data_loaded()
+
+    assert not outcome.processing_error
+    assert session.current_run.tokens("forward") == ["2"]
+    assert session.current_run.tokens("backward") == ["1"]
+    assert session.current_run.tokens("packing") == ["20"]
+    assert session.data is not None
+    assert session.data.kind == "asymmetry"
+
+
 def test_psi_gps_musrroot_fixture():
     pytest.importorskip("uproot")
     path = local_fixture("psi", "gps", "deltatbc_tdc_gps_2025_3092.root")
     run = load_data(path)
-    assert [loader.name for loader in LOADERS][:2] == ["MusrRoot", "NeXus NXdata"]
+    assert [loader.name for loader in LOADERS][:3] == [
+        "MusrRoot", "PSI-BIN", "NeXus NXdata"]
     assert run.counts.shape == (15, 102401)
     assert run.metadata["facility"] == "PSI"
     assert run.metadata["run_number"] == 3092
@@ -219,9 +332,9 @@ def test_other_psi_musrroot_instrument_fixtures(
 
 
 @pytest.mark.parametrize(("relative", "fittype", "forward", "backward", "kind"), [
-    ("flame/flame26_his_00019.root", 2, ["1"], ["2"], "asymmetry"),
+    ("flame/flame26_his_00019.root", 2, ["2"], ["1"], "asymmetry"),
     ("gpd/deltatbc_tdc_gpd_2026_0001.root", 2, ["5"], ["1"], "asymmetry"),
-    ("gps/deltatbc_tdc_gps_2025_3092.root", 2, ["1"], ["2"], "asymmetry"),
+    ("gps/deltatbc_tdc_gps_2025_3092.root", 2, ["2"], ["1"], "asymmetry"),
     ("hal/deltat_tdc_hifi_2026_0017.root", 0, ["2"], [], "histogram"),
     ("lem/lem26_his_0377.root", 2, ["1", "5"], ["3", "7"], "asymmetry"),
 ])
@@ -326,8 +439,12 @@ def test_jparc_bad_timing_keeps_groups_but_requires_manual_timing():
     assert session.data.kind == "asymmetry"
 
 
-def test_legacy_hdf4_nexus_has_an_explicit_error():
-    path = local_fixture("isis", "hifi", "hifi00062999.nxs")
+@pytest.mark.parametrize("relative", [
+    "isis/hifi/hifi00062999.nxs",
+    "isis/musr/MUSR00077281.nxs",
+])
+def test_legacy_hdf4_nexus_has_an_explicit_error(relative):
+    path = local_fixture(relative)
     with pytest.raises(UnsupportedFormatError, match="Legacy HDF4 NeXus"):
         load_data(path)
 

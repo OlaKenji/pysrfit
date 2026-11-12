@@ -1,0 +1,168 @@
+{
+  "title": "Demo: exponential + KT",
+  "parameters": [
+    {
+      "index": 1,
+      "name": "Asymmetry",
+      "value": 0.2376,
+      "step": 0.00139,
+      "lower": 0.0,
+      "upper": 0.33,
+      "pos_error": "none"
+    },
+    {
+      "index": 2,
+      "name": "Lambda",
+      "value": 0.3736,
+      "step": 0.005663,
+      "lower": 0.0,
+      "upper": 5.0,
+      "pos_error": "none"
+    },
+    {
+      "index": 3,
+      "name": "DeltaKT",
+      "value": 0.1497,
+      "step": 0.0,
+      "lower": 0.0,
+      "upper": 2.0,
+      "pos_error": "none"
+    },
+    {
+      "index": 4,
+      "name": "alpha_run1",
+      "value": 0.5383,
+      "step": 0.0,
+      "lower": 0.01,
+      "upper": 10.0,
+      "pos_error": "none"
+    }
+  ],
+  "parameter_text": "# number  name                value           step            min             max\n  1       Asymmetry           0.2376          0.00139         0               0.33\n  2       Lambda              0.3736          0.005663        0               5\n  3       DeltaKT             0.1497          0               0               2\n\n  4       alpha_run1          0.5383          0               0.01            10\n",
+  "theory": "asymmetry 1\nsimplExpo 2\nstatGssKt 3",
+  "functions_text": "",
+  "runs": [
+    {
+      "source": "/Users/olakenjiforslund/OKF/Work/Programming/Python/muon/pysrfit/examples/deltat_tdc_gps_4493.bin",
+      "label": "deltat_tdc_gps_4493",
+      "plot_enabled": true,
+      "instrument": "GPS",
+      "facility": "PSI",
+      "format_hint": "PSI-BIN",
+      "fittype": 2,
+      "options": {
+        "forward": [
+          "2"
+        ],
+        "backward": [
+          "1"
+        ],
+        "t0": [
+          "400",
+          "401"
+        ],
+        "background": [
+          "20",
+          "299",
+          "20",
+          "300"
+        ],
+        "data": [
+          "405",
+          "24948",
+          "406",
+          "25086"
+        ],
+        "packing": [
+          "20"
+        ],
+        "alpha": [
+          "4"
+        ]
+      },
+      "file_metadata": {
+        "run_number": 4493,
+        "title": "PrAlGe, long, ZFC, 0Gs, 40K",
+        "sample": "PrAlGe",
+        "temperature": "39.0022 +- 0.05044 K",
+        "field": "0.000G",
+        "start_time": "09-DEC-19 01:40:59",
+        "end_time": "09-DEC-19 02:06:57",
+        "time_resolution_us": 0.0003906250058207661,
+        "file_header": {
+          "format_id": "1N",
+          "setup": "20190098",
+          "orientation": "xtal",
+          "header_temperature": "39.000K",
+          "comment": "PrAlGe, long, ZFC, 0Gs, 40K",
+          "total_events": 13750255,
+          "temperatures_K": [
+            39.002220153808594,
+            41.01873016357422,
+            0.0,
+            0.0
+          ],
+          "temperature_errors_K": [
+            0.050439998507499695,
+            0.020759999752044678,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "user_metadata": {}
+    }
+  ],
+  "custom_python": "# This code runs only when you click \"Activate code\".\n# You can write your own Python relaxation functions without compilation.\nimport numpy as np\nfrom pysrfit.core.functions import register_function\n\n@register_function(\"stretchedExpo\", 2, \"exp(-(lambda*t)**beta)\", custom=True)\ndef stretched_expo(t, lam, beta):\n    return np.exp(-(lam * np.asarray(t))**beta)\n\n# Then use in THEORY, e.g.:\n#   asymmetry 1\n#   stretchedExpo 2 3\n",
+  "source_msr": "",
+  "msr_sections": {},
+  "spectrum_path": "",
+  "data_override": "/Users/olakenjiforslund/OKF/Work/Programming/Python/muon/pysrfit/examples/deltat_tdc_gps_4493.bin",
+  "display": {
+    "t_start": 0.0,
+    "t_stop": 8.0,
+    "y_auto": true,
+    "y_min": -0.3,
+    "y_max": 0.3,
+    "view_packing": 200,
+    "parameter_significant_digits": 4
+  },
+  "fourier": {
+    "window": "Hann",
+    "subtract_mean": true,
+    "zero_padding": 2,
+    "phase_deg": 0.0,
+    "output": "Magnitude",
+    "normalize": true,
+    "units": "MHz",
+    "frequency_min": 0.0,
+    "frequency_max": 100.0
+  },
+  "last_fit": {
+    "valid": true,
+    "chi2": 1223.0615615846864,
+    "ndf": 1193,
+    "values": {
+      "1": 0.23757711910711526,
+      "2": 0.37362394468422294,
+      "3": 0.1497,
+      "4": 0.5383,
+      "5": 1.0
+    },
+    "errors": {
+      "1": 0.0013895018454986585,
+      "2": 0.005662947719330957,
+      "3": 0.0,
+      "4": 0.0,
+      "5": 0.0
+    },
+    "run_chi2": [
+      1223.0615615846864
+    ],
+    "run_points": [
+      1195
+    ],
+    "message": ""
+  },
+  "schema_version": 1
+}

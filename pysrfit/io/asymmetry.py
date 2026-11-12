@@ -176,7 +176,10 @@ def asymmetry_from_components(
     backward_variance = np.asarray(components["backward_variance"], dtype=float)
     denominator = alpha * forward + backward
     if np.any(denominator <= 0):
-        raise ValueError("Nonpositive denominator after background subtraction")
+        raise ValueError(
+            "Nonpositive denominator after background subtraction. "
+            "Try increasing packing or adjusting the data and background ranges."
+        )
     asymmetry = (alpha * forward - backward) / denominator
     derivative_forward = 2 * alpha * backward / denominator**2
     derivative_backward = -2 * alpha * forward / denominator**2

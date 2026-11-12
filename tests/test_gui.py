@@ -13,12 +13,9 @@ pytest.importorskip("matplotlib")
 from PyQt5.QtGui import QKeySequence, QTextCursor
 from PyQt5.QtWidgets import QApplication
 
-from pysrfit.gui.main_window import MainWindow
+from pysrfit.gui.main_window import DATA_COLORS, MainWindow
 from pysrfit.io.base import DetectorInfo, HistogramRun, Spectrum
 from pysrfit.models import RunConfig
-
-
-ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture(scope="module")
@@ -26,10 +23,20 @@ def application():
     return QApplication.instance() or QApplication([])
 
 
-def test_analyses_have_independent_projects_and_data(application):
+@pytest.fixture(scope="module")
+def demo_spectrum(tmp_path_factory):
+    path = tmp_path_factory.mktemp("gui-data") / "demo_spectrum.csv"
+    time = np.linspace(0.0, 8.0, 401)
+    values = 0.2 * np.exp(-0.15 * time) * np.cos(2.0 * np.pi * 1.5 * time)
+    np.savetxt(path, np.column_stack((time, values, np.full_like(time, 0.01))),
+               delimiter=",")
+    return path
+
+
+def test_analyses_have_independent_projects_and_data(application, demo_spectrum):
     window = MainWindow()
     first = window.current_analysis()
-    second = window.add_analysis(data_path=ROOT / "examples" / "demo_spectrum.csv")
+    second = window.add_analysis(data_path=demo_spectrum)
 
     assert window.analysis_tabs.count() == 2
     assert first.project is not second.project
@@ -51,6 +58,13 @@ def test_data_source_shortcuts(application):
         QKeySequence.PortableText) == "Ctrl+D"
     assert actions["Change data source..."].shortcut().toString(
         QKeySequence.PortableText) == "Ctrl+Shift+O"
+    file_actions = {
+        action.text()
+        for menu_action in window.menuBar().actions()
+        if menu_action.text() == "&File"
+        for action in menu_action.menu().actions()
+    }
+    assert "Change data source..." in file_actions
     window.close()
 
 
@@ -186,11 +200,12 @@ def test_run_number_control_changes_source_without_replacing_configuration(
     window.close()
 
 
-def test_multiple_runs_have_independent_maps_and_plot_selection(application):
+def test_multiple_runs_have_independent_maps_and_plot_selection(
+        application, demo_spectrum):
     window = MainWindow()
     analysis = window.add_analysis(data_paths=[
-        ROOT / "examples" / "demo_spectrum.csv",
-        ROOT / "examples" / "demo_spectrum.csv",
+        demo_spectrum,
+        demo_spectrum,
     ])
     assert analysis.session.run_count == 2
     assert len(analysis.session.prepared_runs()) == 2
@@ -289,10 +304,9 @@ def test_switching_to_single_histogram_configures_count_parameters(application):
 
 
 def test_revert_fit_toggles_exact_pre_fit_text_and_latest_result(
-        application, monkeypatch):
+        application, monkeypatch, demo_spectrum):
     window = MainWindow()
-    analysis = window.add_analysis(
-        data_path=ROOT / "examples" / "demo_spectrum.csv")
+    analysis = window.add_analysis(data_path=demo_spectrum)
     before_text = analysis.parameters_edit.toPlainText() + "\n\n# Keep this layout"
     analysis.parameters_edit.setPlainText(before_text)
     before_values = {
@@ -364,10 +378,9 @@ def test_save_uses_current_path_and_save_as_chooses_a_new_path(
     window.close()
 
 
-def test_fourier_plot_shows_data_markers_and_fit_line(application):
+def test_fourier_plot_shows_data_markers_and_fit_line(application, demo_spectrum):
     window = MainWindow()
-    analysis = window.add_analysis(
-        data_path=ROOT / "examples" / "demo_spectrum.csv")
+    analysis = window.add_analysis(data_path=demo_spectrum)
     analysis.project.runs[0].file_metadata["run_number"] = 42
     analysis.mode.setCurrentIndex(1)
     analysis.redraw()
@@ -386,25 +399,33 @@ def test_fourier_plot_shows_data_markers_and_fit_line(application):
     window.close()
 
 
-def test_time_plot_uses_distinct_run_markers_and_data_only_legend(application):
+def test_time_plot_uses_distinct_run_markers_and_data_only_legend(
+        application, demo_spectrum):
     window = MainWindow()
     analysis = window.add_analysis(data_paths=[
-        ROOT / "examples" / "demo_spectrum.csv",
-        ROOT / "examples" / "demo_spectrum.csv",
+        demo_spectrum,
+        demo_spectrum,
+        demo_spectrum,
     ])
     analysis.project.runs[0].file_metadata["run_number"] = 41
     analysis.project.runs[1].file_metadata["run_number"] = 42
+    analysis.project.runs[2].file_metadata["run_number"] = 43
     analysis.redraw()
 
     axis = analysis.canvas.figure.axes[0]
     data_artists = {
         container.get_label(): container.lines[0]
         for container in axis.containers
-        if container.get_label() in {"41", "42"}
+        if container.get_label() in {"41", "42", "43"}
     }
     assert data_artists["41"].get_marker() == "o"
     assert data_artists["42"].get_marker() == "s"
-    assert [text.get_text() for text in axis.get_legend().get_texts()] == ["41", "42"]
+    assert data_artists["43"].get_marker() == "^"
+    assert data_artists["41"].get_color() == DATA_COLORS[0]
+    assert data_artists["42"].get_color() == DATA_COLORS[1]
+    assert data_artists["43"].get_color() == DATA_COLORS[2]
+    assert [text.get_text() for text in axis.get_legend().get_texts()] == [
+        "41", "42", "43"]
     assert all(
         artist.get_label() == "_nolegend_"
         for artist in axis.lines

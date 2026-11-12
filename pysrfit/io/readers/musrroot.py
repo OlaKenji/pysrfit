@@ -154,13 +154,18 @@ def _suggested_run_configuration(
                 "data_stop_us": 6.0,
             }
 
-    forward = by_name.get("forw", []) + by_name.get("forward", [])
-    backward = by_name.get("back", []) + by_name.get("backward", [])
-    if len(forward) == 1 and len(backward) == 1:
+    labelled_forward = by_name.get("forw", []) + by_name.get("forward", [])
+    labelled_backward = by_name.get("back", []) + by_name.get("backward", [])
+    if len(labelled_forward) == 1 and len(labelled_backward) == 1:
+        # GPS and FLAME analysis assign the counters opposite to their
+        # hardware-facing Forw/Back labels. GPD uses the labelled roles.
+        reverse_labels = "gpd" not in normalized
         suggestion = {
             "fittype": 2,
-            "forward": forward,
-            "backward": backward,
+            "forward": (
+                labelled_backward if reverse_labels else labelled_forward),
+            "backward": (
+                labelled_forward if reverse_labels else labelled_backward),
             "packing": 20,
         }
         if "gpd" in normalized or normalized == "flame":

@@ -55,6 +55,18 @@ from .run_corrections import RunCorrectionsDialog
 
 
 DATA_MARKERS = ("o", "s", "^", "D", "v", "P", "X", "<", ">", "h")
+DATA_COLORS = (
+    "#1f77b4",  # blue
+    "#c49a00",  # muted yellow/ochre
+    "#cc79a7",  # pink
+    "#2ca02c",  # green
+    "#d62728",  # red
+    "#9467bd",  # purple
+    "#8c564b",  # brown
+    "#17becf",  # cyan
+    "#7f7f7f",  # grey
+    "#ff7f0e",  # orange
+)
 
 
 class PlotCanvas(FigureCanvas):
@@ -78,6 +90,9 @@ class MainWindow(QMainWindow):
         self._action(
             file_menu, "Add data files…",
             lambda: self._call("add_run_files_dialog"), "Ctrl+D")
+        self._action(
+            file_menu, "Change data source...",
+            lambda: self._call("change_data_source_dialog"), "Ctrl+Shift+O")
         self._action(file_menu, "Collect fit results...", self.collect_results_dialog)
         file_menu.addSeparator()
         self._action(file_menu, "Save", lambda: self._call("save_project"), "Ctrl+S")
@@ -90,9 +105,6 @@ class MainWindow(QMainWindow):
         self._action(file_menu, "Quit", self.close, "Ctrl+Q")
 
         analysis_menu = self.menuBar().addMenu("&Analysis")
-        self._action(
-            analysis_menu, "Change data source...",
-            lambda: self._call("change_data_source_dialog"), "Ctrl+Shift+O")
         self._action(
             analysis_menu, "Apply parameters",
             lambda: self._call("apply_parameters"), "Ctrl+R")
@@ -1787,7 +1799,7 @@ class AnalysisWorkspace(QWidget):
                     self._plot_fft_dataset(
                         ax, run, fit_data, data, tmin, tmax,
                         self._plot_legend_label(index, run, data),
-                        self._data_marker(index),
+                        self._data_marker(index), self._data_color(index),
                     )
                 ax.set(
                     xlabel=f"Frequency ({self.project.fourier['units']})",
@@ -1812,7 +1824,8 @@ class AnalysisWorkspace(QWidget):
                     label = self._plot_legend_label(index, run, data)
                     marker = self._data_marker(index)
                     color = self._plot_dataset(
-                        ax, run, fit_data, data, tmin, tmax, label, marker)
+                        ax, run, fit_data, data, tmin, tmax, label, marker,
+                        self._data_color(index))
                     if residual_axis is not None:
                         self._plot_residual(
                             residual_axis, run, fit_data, data,
@@ -1838,6 +1851,10 @@ class AnalysisWorkspace(QWidget):
     @staticmethod
     def _data_marker(index):
         return DATA_MARKERS[index % len(DATA_MARKERS)]
+
+    @staticmethod
+    def _data_color(index):
+        return DATA_COLORS[index % len(DATA_COLORS)]
 
     @staticmethod
     def _plot_legend_label(index, run, data):
@@ -1870,18 +1887,18 @@ class AnalysisWorkspace(QWidget):
         )
 
     def _plot_dataset(
-        self, ax, run, fit_data, data, tmin, tmax, label, marker,
+        self, ax, run, fit_data, data, tmin, tmax, label, marker, color,
     ):
         selected = (data.time_us >= tmin) & (data.time_us <= tmax)
         indices = np.flatnonzero(selected)
         indices = indices[::max(1, len(indices) // 1500)]
         artists = ax.errorbar(
             data.time_us[indices], data.values[indices], yerr=data.error[indices],
-            fmt=marker, markersize=7, markeredgecolor="black",
+            fmt=marker, color=color, ecolor=color,
+            markersize=7, markeredgecolor="black",
             markeredgewidth=0.7, linewidth=0.5, alpha=0.85,
             label=label, zorder=2,
         )
-        color = artists[0].get_color()
         time = np.linspace(tmin, tmax, 1400)
         model = self._evaluate_plot_model(run, fit_data, data, time)
         ax.plot(
@@ -1912,7 +1929,7 @@ class AnalysisWorkspace(QWidget):
             )
 
     def _plot_fft_dataset(
-        self, ax, run, fit_data, data, tmin, tmax, label, marker,
+        self, ax, run, fit_data, data, tmin, tmax, label, marker, color,
     ):
         valid = (data.time_us >= tmin) & (data.time_us <= tmax)
         tx = data.time_us[valid]
@@ -1922,6 +1939,7 @@ class AnalysisWorkspace(QWidget):
             tx,
             yy,
             label,
+            color=color,
             linestyle="none",
             marker=marker,
             markersize=7,

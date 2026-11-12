@@ -1,0 +1,60 @@
+PrAlGe, long, ZFC, 0Gs, 40K                                   
+TITLE                            
+###############################################################
+FITPARAMETER
+#      Nr. Name        Value     Step      Pos_Error  Boundaries
+        1 alpha       0.5383    0           none        0       none    
+
+        2 asyKT       0.2374    0.0014      none        0       10      
+        3 lamKT       0.3725    0.0056      none        0       400     
+        4 delKT       0.1497    0           none        0       180     
+    
+###############################################################
+THEORY
+asymmetry      2
+simplExpo      3          (rate)
+statGssKt      4          (rate)
+
+###############################################################
+FUNCTIONS
+#fun1 = (par4 + par10) / 2
+###############################################################
+RUN ./Data/deltat_tdc_gps_4493 PIE1 PSI PSI-BIN   (name beamline institute data-file-format)
+fittype         2         (asymmetry fit)
+alpha           1
+map             0    0    0    0    0    0    0    0    0    0
+forward         2 
+backward        1 
+background      20      299     20      300        # estimated bkg: 7.7849 / 3.8459
+data            405     24948   406     25086   
+t0              400.0   401.0   
+fit             0       8      
+packing         20
+
+##############################################################
+COMMANDS
+MINIMIZE
+HESSE
+#MINOS
+SAVE
+
+###############################################################
+FOURIER
+units            MHz    # units either 'Gauss', 'Tesla', 'MHz', or 'Mc/s'
+fourier_power    12
+apodization      STRONG  # NONE, WEAK, MEDIUM, STRONG
+plot             POWER   # REAL, IMAG, REAL_AND_IMAG, POWER, PHASE, PHASE_OPT_REAL
+#phase            1
+#range_for_phase_correction  -10    10
+range            0    110
+
+###############################################################
+PLOT 2   (asymmetry plot)
+runs     1   
+range    0   8   -0.05   0.3
+#use_fit_ranges 
+ view_packing 150
+
+###############################################################
+STATISTIC --- 2026-11-11 22:18:17
+  chisq = 1068.3, NDF = 1022, chisq/NDF = 1.045294

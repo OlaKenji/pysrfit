@@ -47,7 +47,7 @@ pysrfit
 
 ### Supported Facilities
 
-- **PSI:** MusrRoot `.root` files, tested with GPS, GPD, FLAME, HAL and LEM.
+- **PSI:** MusrRoot `.root` files and legacy PSI-BIN `.bin` files, tested with GPS, GPD, FLAME, HAL and LEM.
 - **ISIS:** NeXus `.nxs` files.
 - **J-PARC:** NeXus `.nxs` files, tested with MS1 and MD1.
 - **TRIUMF:** binary MUD `.msr` and `.mud` files, tested with M20 and M15.
